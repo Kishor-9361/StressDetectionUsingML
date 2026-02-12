@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multimodal Stress Detection</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #444;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="file"], input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #1a73e8;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        #result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        .stress-high {
+            background-color: #ffebee;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+        .stress-low {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+        .stress-moderate {
+            background-color: #fff3e0;
+            color: #ef6c00;
+            border: 1px solid #ffe0b2;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Multimodal Stress Detection</h1>
+        
+        <div class="card">
+            <h3>Analyze Stress Level</h3>
+            <form id="analyzeForm">
+                <div class="form-group">
+                    <label for="face_image">Facial Image (Optional)</label>
+                    <input type="file" id="face_image" name="face_image" accept="image/*">
+                </div>
+                
+                <div class="form-group">
+                    <label for="voice_audio">Voice Audio (Optional)</label>
+                    <input type="file" id="voice_audio" name="voice_audio" accept="audio/*">
+                </div>
+                
+                <div class="form-group">
+                    <label for="eeg_data">EEG Data (Comma separated numbers, Optional)</label>
+                    <input type="text" id="eeg_data" name="eeg_data" placeholder="e.g., 0.5, 0.7, 0.6, 0.8">
+                </div>
+                
+                <div class="form-group">
+                    <label for="gsr_data">GSR Data (Comma separated numbers, Optional)</label>
+                    <input type="text" id="gsr_data" name="gsr_data" placeholder="e.g., 2.1, 2.3, 2.2, 2.4">
+                </div>
+                
+                <button type="submit">Analyze</button>
+            </form>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('analyzeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Analyzing...';
+            resultDiv.className = '';
+            
+            const formData = new FormData(e.target);
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/multimodal/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                    resultDiv.className = 'stress-high'; // Use red for error
+                    return;
+                }
+                
+                let stressClass = 'stress-low';
+                if (data.stress_level === 'High') stressClass = 'stress-high';
+                else if (data.stress_level === 'Moderate') stressClass = 'stress-moderate';
+                
+                resultDiv.className = stressClass;
+                resultDiv.innerHTML = `
+                    <h2>Result: ${data.stress_level} Stress</h2>
+                    <p><strong>Predicted Class:</strong> ${data.predicted_class}</p>
+                    <p><strong>Confidence:</strong> ${(data.confidence * 100).toFixed(2)}%</p>
+                    <p><strong>Stress Probability:</strong> ${(data.stress_probability * 100).toFixed(2)}%</p>
+                    <hr>
+                    <details>
+                        <summary>Raw Response</summary>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </details>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<strong>Error:</strong> Could not connect to the backend. Is it running?`;
+                resultDiv.className = 'stress-high';
+            }
+        });
+    </script>
+</body>
+</html>
