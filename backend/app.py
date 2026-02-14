@@ -181,7 +181,7 @@ from model import MultimodalStressDetector
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25, max_http_buffer_size=100000000)
 
 # Initialize global stream processor
 stream_processor = StressStreamProcessor()
@@ -201,16 +201,14 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Initialize the model
 model = MultimodalStressDetector()
 
-# Try to load pre-trained model if it exists
+# Try to load pre-trained expert models
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'multimodal_stress_model.pkl')
-if os.path.exists(MODEL_PATH):
-    try:
-        model.load_model(MODEL_PATH)
-        print("Pre-trained model loaded successfully!")
-    except Exception as e:
-        print(f"Could not load pre-trained model: {e}")
-        print("Please train the model first using train_model.py")
+# The load_model method now expects a directory containing the 3 expert .pkl files
+if model.load_model(BASE_DIR):
+    print("Pre-trained expert models loaded successfully!")
+else:
+    print("Could not load one or more expert models.")
+    print("Please ensure 'facial_expert_model.pkl', 'voice_expert_model.pkl', and 'physio_expert_model.pkl' exist in the backend folder.")
 
 def allowed_file(filename, allowed_extensions):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
