@@ -8,6 +8,86 @@ import librosa
 import pickle
 import os
 import mediapipe as mp
+
+# Check if we can use legacy solutions or modern Tasks API
+USE_LEGACY_MEDIAPIPE = False
+try:
+    import mediapipe.solutions.face_mesh as mp_face_mesh
+    USE_LEGACY_MEDIAPIPE = True
+except (ImportError, AttributeError):
+    USE_LEGACY_MEDIAPIPE = False
+
+# --- FaceMeshWrapper to support both Legacy solutions and Modern Tasks API ---
+class FaceMeshWrapper:
+    def __init__(self, static_mode=True):
+        self.static_mode = static_mode
+        self.use_tasks = not USE_LEGACY_MEDIAPIPE
+        self.fm = None
+        self.detector = None
+        
+        if self.use_tasks:
+            self.model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "face_landmarker.task")
+            if not os.path.exists(self.model_path):
+                import urllib.request
+                url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+                print("Downloading Face Landmarker model asset for Tasks API...")
+                urllib.request.urlretrieve(url, self.model_path)
+            
+            from mediapipe.tasks import python
+            from mediapipe.tasks.python import vision
+            base_options = python.BaseOptions(model_asset_path=self.model_path)
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.IMAGE,
+                output_face_blendshapes=False,
+                output_facial_transformation_matrixes=False,
+                num_faces=1
+            )
+            self.detector = vision.FaceLandmarker.create_from_options(options)
+        else:
+            import mediapipe.solutions.face_mesh as mp_face_mesh
+            self.fm = mp_face_mesh.FaceMesh(
+                static_image_mode=self.static_mode,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+
+    def process(self, rgb_image):
+        if self.use_tasks:
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
+            res = self.detector.detect(mp_image)
+            
+            class LegacyLandmarkResult:
+                def __init__(self, landmarks):
+                    self.landmark = landmarks
+                    
+            class LegacyResult:
+                def __init__(self, face_landmarks):
+                    self.multi_face_landmarks = [LegacyLandmarkResult(face_landmarks[0])]
+                    
+            class LegacyResultEmpty:
+                multi_face_landmarks = None
+
+            if res and res.face_landmarks and len(res.face_landmarks) > 0:
+                return LegacyResult(res.face_landmarks)
+            else:
+                return LegacyResultEmpty()
+        else:
+            return self.fm.process(rgb_image)
+
+    def close(self):
+        if self.fm:
+            self.fm.close()
+        if self.detector:
+            self.detector.close()
+            
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -28,14 +108,7 @@ class MultimodalStressDetector:
         self.smile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_smile.xml')
 
         # Advanced MediaPipe Initialization
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+        self.face_mesh = FaceMeshWrapper(static_mode=False)
     
     def load_model(self, base_path='.'):
         """Load the 3 specialized expert models"""

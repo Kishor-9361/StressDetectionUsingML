@@ -362,7 +362,7 @@
 
 
 import React, { useState, useRef, useEffect } from "react";
-import StreamAnalyzer from "../components/StreamAnalyzer";
+import RealtimeMonitor from "../components/RealtimeMonitor";
 import "../theme.css";
 
 export default function Dashboard() {
@@ -483,7 +483,7 @@ export default function Dashboard() {
       if (eegData) formData.append('eeg_data', eegData);
       if (gsrData) formData.append('gsr_data', gsrData);
 
-      const response = await fetch('http://localhost:5000/api/multimodal/analyze', {
+      const response = await fetch('http://127.0.0.1:5000/api/multimodal/analyze', {
         method: 'POST',
         body: formData,
       });
@@ -556,7 +556,7 @@ export default function Dashboard() {
       </div>
 
       {mode === 'realtime' ? (
-        <StreamAnalyzer />
+        <RealtimeMonitor />
       ) : (
         <>
 

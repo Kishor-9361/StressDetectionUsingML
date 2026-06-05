@@ -38,7 +38,7 @@ const StreamAnalyzer = () => {
 
     useEffect(() => {
         // Connect to Socket.IO
-        socketRef.current = io('http://localhost:5000');
+        socketRef.current = io('http://127.0.0.1:5000');
 
         socketRef.current.on('connect', () => {
             setStatus('Connected');

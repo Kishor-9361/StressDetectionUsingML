@@ -24,6 +24,9 @@
       work correctly both with client-side routing and a non-root public URL.
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
+    <!-- MediaPipe Global CDN Scripts to bypass Webpack WebAssembly bundling issues -->
+    <script src="/mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="/mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <title>React App</title>
   </head>
   <body>
