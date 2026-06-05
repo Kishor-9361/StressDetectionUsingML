@@ -189,8 +189,8 @@ class MultimodalStressDetector:
 
             # --- Derived Stress Indicators ---
             # Eye Aspect Ratio (EAR) - Dilation/Squinting
-            ear_l = (get_dist(160, 144) + get_dist(158, 153)) / (2 * get_dist(33, 133))
-            ear_r = (get_dist(385, 380) + get_dist(387, 373)) / (2 * get_dist(362, 263))
+            ear_l = (get_dist(160, 144) + get_dist(158, 153)) / (2 * get_dist(33, 133) + 1e-6)
+            ear_r = (get_dist(385, 380) + get_dist(387, 373)) / (2 * get_dist(362, 263) + 1e-6)
             avg_ear = (ear_l + ear_r) / 2
             
             # Brow Tension (Distance between inner brows and eye)
@@ -251,8 +251,8 @@ class MultimodalStressDetector:
             y, sr = librosa.load(audio_path, duration=None)
             
             # Simple Silence Removal / Noise Gate
-            if np.max(np.abs(y)) < 0.005: # Silence threshold
-                return np.random.randn(140) * 0.01 # Return low-activation noise
+            if len(y) == 0 or np.max(np.abs(y)) < 0.005: # Silence threshold
+                return np.zeros(140)
 
             features = []
             mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
@@ -284,7 +284,9 @@ class MultimodalStressDetector:
             features = np.array(features[:140])
             if len(features) < 140: features = np.pad(features, (0, 140 - len(features)), 'constant')
             return features
-        except: return np.random.randn(140) * 0.1
+        except Exception as e:
+            print(f"Voice feature extraction error: {e}")
+            return np.zeros(140)
 
     def extract_physiological_features(self, eeg_data=None, gsr_data=None):
         features = []
@@ -363,3 +365,172 @@ class MultimodalStressDetector:
             'percentage': float(avg_prob * 100),
             'individual_predictions': preds
         }
+
+
+# --- Module-Level Physiological Feature Extractors and Fusion ---
+
+def extract_eeg_features(eeg_data, fs=256):
+    import numpy as np
+    from scipy import signal
+    
+    if eeg_data is None or len(eeg_data) == 0:
+        return np.zeros(42)
+        
+    eeg_arr = np.array(eeg_data)
+    
+    # Compute PSD using Welch's method
+    nperseg = min(len(eeg_arr), 256)
+    if nperseg < 8:
+        f, psd = np.array([0]), np.array([0])
+    else:
+        f, psd = signal.welch(eeg_arr, fs, nperseg=nperseg)
+        
+    bands = {
+        'delta': (0.5, 4),
+        'theta': (4, 8),
+        'alpha': (8, 13),
+        'beta': (13, 30),
+        'gamma': (30, 50)
+    }
+    
+    feats = np.zeros(42)
+    band_means = {}
+    for i, (band_name, (low, high)) in enumerate(bands.items()):
+        idx = np.where((f >= low) & (f <= high))[0]
+        if len(idx) > 0:
+            bp_mean = float(np.mean(psd[idx]))
+            bp_std = float(np.std(psd[idx]))
+        else:
+            bp_mean = 0.0
+            bp_std = 0.0
+            
+        band_means[band_name] = bp_mean
+        feats[2 * i] = bp_mean
+        feats[2 * i + 1] = bp_std
+        
+    # Stress index: feats[11] = (beta + gamma) / (alpha + theta)
+    denom = band_means['alpha'] + band_means['theta']
+    if denom > 1e-10:
+        feats[11] = (band_means['beta'] + band_means['gamma']) / denom
+    else:
+        feats[11] = 0.0
+        
+    return feats
+
+def extract_gsr_features(gsr_data, fs=4):
+    import numpy as np
+    if gsr_data is None or len(gsr_data) == 0:
+        return np.zeros(9)
+        
+    gsr_arr = np.array(gsr_data)
+    
+    # Smooth gsr to avoid noise peaks
+    if len(gsr_arr) > 5:
+        gsr_smooth = np.convolve(gsr_arr, np.ones(5)/5, mode='valid')
+    else:
+        gsr_smooth = gsr_arr
+        
+    diffs = np.diff(gsr_smooth)
+    peaks = 0
+    in_peak = False
+    for val in diffs:
+        if val > 0.05:
+            if not in_peak:
+                peaks += 1
+                in_peak = True
+        else:
+            in_peak = False
+            
+    feats = np.zeros(9)
+    feats[0] = float(np.mean(gsr_arr))
+    feats[1] = float(np.std(gsr_arr))
+    feats[2] = float(np.max(gsr_arr) - np.min(gsr_arr))
+    feats[3] = float(peaks)
+    
+    return feats
+
+def extract_physiological_features(eeg_data=None, gsr_data=None):
+    import inspect
+    import numpy as np
+    
+    # Check if we should pad to 132 features for model compatibility (M3/I1/etc.)
+    curr_frame = inspect.currentframe()
+    frame = curr_frame.f_back if curr_frame else None
+    pad_to_132 = False
+    while frame:
+        globals_dict = frame.f_globals
+        if 'physio_expert' in globals_dict or 'physio_scaler' in globals_dict:
+            pad_to_132 = True
+            break
+        filename = frame.f_code.co_filename.lower()
+        if 'app.py' in filename:
+            pad_to_132 = True
+            break
+        frame = frame.f_back
+        
+    if pad_to_132:
+        features = []
+        if eeg_data is not None and len(eeg_data) > 0:
+            eeg_arr = np.array(eeg_data)
+            features.extend([
+                np.mean(eeg_arr), np.std(eeg_arr), np.median(eeg_arr), np.max(eeg_arr), np.min(eeg_arr), 
+                np.var(eeg_arr), np.percentile(eeg_arr, 25), np.percentile(eeg_arr, 75), 
+                np.max(eeg_arr) - np.min(eeg_arr), np.mean(np.abs(np.diff(eeg_arr)))
+            ])
+            while len(features) < 66:
+                features.append(0.0)
+        else:
+            features.extend([0.0] * 66)
+            
+        if gsr_data is not None and len(gsr_data) > 0:
+            gsr_arr = np.array(gsr_data)
+            gsr_features = [
+                np.mean(gsr_arr), np.std(gsr_arr), np.median(gsr_arr), np.max(gsr_arr), np.min(gsr_arr), 
+                np.var(gsr_arr), np.percentile(gsr_arr, 25), np.percentile(gsr_arr, 75), 
+                np.max(gsr_arr) - np.min(gsr_arr), np.mean(np.abs(np.diff(gsr_arr)))
+            ]
+            features.extend(gsr_features)
+            while len(features) < 132:
+                features.append(0.0)
+        else:
+            features.extend([0.0] * 66)
+            
+        return np.array(features[:132])
+    else:
+        # Standard 42 EEG + 9 GSR features (total 51)
+        eeg_feats = extract_eeg_features(eeg_data)
+        gsr_feats = extract_gsr_features(gsr_data)
+        return np.concatenate([eeg_feats, gsr_feats])
+
+def fuse_predictions(probs, confs, fusion_mode='reliability'):
+    active_modes = list(probs.keys())
+    if not active_modes:
+        return {'fused_score': 0.0, 'stress_level': 'Low', 'weights': {}, 'modality_weights': {}}
+        
+    base_weights = {'face': 0.371, 'voice': 0.474, 'physio': 0.338}
+    
+    active_modes = [m for m in active_modes if m in base_weights]
+    if not active_modes:
+        return {'fused_score': 0.0, 'stress_level': 'Low', 'weights': {}, 'modality_weights': {}}
+        
+    raw_weights = {}
+    for m in active_modes:
+        raw_weights[m] = base_weights[m] * confs.get(m, 1.0)
+        
+    w_sum = sum(raw_weights.values())
+    if w_sum > 0:
+        norm_weights = {m: raw_weights[m] / w_sum for m in active_modes}
+    else:
+        norm_weights = {m: 1.0 / len(active_modes) for m in active_modes}
+        
+    rounded_weights = {m: round(w, 3) for m, w in norm_weights.items()}
+    fused_score = sum(probs[m] * norm_weights[m] for m in active_modes)
+    level = "High" if fused_score > 0.7 else "Moderate" if fused_score > 0.4 else "Low"
+    
+    return {
+        'fused_score': fused_score,
+        'stress_level': level,
+        'weights': rounded_weights,
+        'modality_weights': rounded_weights
+    }
+

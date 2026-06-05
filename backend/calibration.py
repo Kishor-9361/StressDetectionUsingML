@@ -70,15 +70,19 @@ class UserCalibration:
             if len(self.samples_face) < 10:
                 return False
 
-            ear_vals  = [s['avg_ear']           for s in self.samples_face if s.get('avg_ear')]
-            jaw_vals  = [s['jaw_displacement']  for s in self.samples_face if s.get('jaw_displacement')]
-            brow_vals = [s['brow_descent_left'] for s in self.samples_face if s.get('brow_descent_left')]
+            ear_vals  = [s['avg_ear']           for s in self.samples_face if s.get('avg_ear') is not None]
+            jaw_vals  = [s['jaw_displacement']  for s in self.samples_face if s.get('jaw_displacement') is not None]
+            brow_vals = [s['brow_descent_left'] for s in self.samples_face if s.get('brow_descent_left') is not None]
 
             if ear_vals:
-                # Remove outliers (blinks) before computing baseline
-                ear_arr = np.array(ear_vals)
-                ear_arr = ear_arr[ear_arr > np.percentile(ear_arr, 20)]  # remove bottom 20% (blinks)
-                self.ear_baseline  = float(np.median(ear_arr))
+                # Remove outliers (blinks) before computing baseline by sorting and slicing the bottom 20%
+                ear_arr = np.sort(np.array(ear_vals))
+                slice_idx = int(len(ear_arr) * 0.2)
+                ear_arr_filtered = ear_arr[slice_idx:]
+                if len(ear_arr_filtered) > 0:
+                    self.ear_baseline  = float(np.median(ear_arr_filtered))
+                else:
+                    self.ear_baseline  = float(np.median(ear_arr))
 
             if jaw_vals:
                 self.jaw_baseline  = float(np.median(jaw_vals))
@@ -89,15 +93,24 @@ class UserCalibration:
             self.is_complete = True
             return True
 
-    def normalize_voice_features(self, features: np.ndarray, voice_scaler) -> np.ndarray:
+    def normalize_voice_features(self, features: np.ndarray, voice_scaler=None) -> np.ndarray:
         """
         Normalize voice feature vector relative to personal baseline.
         Since features are scaled by voice_scaler.transform() on the server,
         we transform our calibrated user Z-scores back to a pseudo-raw space
         so that when scaled by the StandardScaler, they output the correct Z-score.
+        If voice_scaler is None, we return the raw Z-scores directly.
         """
         f = features.copy().astype(np.float32)
         if voice_scaler is None:
+            if self.f0_mean is not None and self.f0_mean > 0:
+                f[0] = (f[0] - self.f0_mean) / (self.f0_std + 1e-6)
+                f[1] = f[1] / (self.f0_std + 1e-6)
+                f[2] = f[2] / (self.f0_std + 1e-6)
+            if self.rms_mean is not None and self.rms_mean > 0:
+                f[7] = (f[7] - self.rms_mean) / (self.rms_std + 1e-6)
+            if self.hnr_mean is not None:
+                f[5] = f[5] - self.hnr_mean
             return f
             
         means = voice_scaler.mean_
