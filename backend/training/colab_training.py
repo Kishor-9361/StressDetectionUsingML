@@ -203,7 +203,7 @@ def compute_18_face_indicators(image_path):
         dist(pts, 285, 386) / faceH,                            # brow_descent_right
         abs(dist(pts, 55, 159) - dist(pts, 285, 386)) / faceH,    # brow_asymmetry
         dist(pts, 13, 14) / (dist(pts, 61, 291) + 1e-6),        # lip_compression
-        faceW / faceH,                                          # jaw_tension
+        dist(pts, 4, 152) / iod,                                # jaw_displacement (dynamic nose-to-chin distance)
         (dist(pts, 61, 4) + dist(pts, 291, 4)) / (2 * faceH),   # mouth_corner_pull
         dist(pts, 10, 151) / faceH,                             # forehead_tension
         faceH / iod,                                            # face_height_norm

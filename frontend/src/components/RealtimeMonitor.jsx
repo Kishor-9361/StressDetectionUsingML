@@ -9,14 +9,17 @@ const LEVEL_COLOR = {
   High: '#F44336'       // Red
 };
 
-function IndicatorBar({ label, value, scale = 1.0, format }) {
+function IndicatorBar({ label, value, scale = 1.0, format, extra, valueColor }) {
   const percent = Math.min(100, Math.max(0, (value / scale) * 100));
-  const barColor = percent > 75 ? '#F44336' : percent > 40 ? '#FF9800' : '#00f2ff';
+  const barColor = valueColor || (percent > 75 ? '#F44336' : percent > 40 ? '#FF9800' : '#00f2ff');
   
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-color)' }}>
-        <span>{label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>{label}</span>
+          {extra}
+        </div>
         <span style={{ fontWeight: 'bold', fontFamily: 'monospace', color: barColor }}>{format(value)}</span>
       </div>
       <div style={{ width: '100%', height: 6, background: 'rgba(255, 255, 255, 0.05)', borderRadius: 3, overflow: 'hidden' }}>
@@ -32,6 +35,100 @@ function IndicatorBar({ label, value, scale = 1.0, format }) {
   );
 }
 
+const faceParamDetails = {
+  jaw_displacement: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Distance between the nose tip and the chin, normalized by eye distance.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Measured using facial landmarks 4 (nose tip) and 152 (chin) normalized by 33 & 263 (eyes).<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Open and close your mouth, or speak. You will see the Jaw Displacement bar rise and fall.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress often causes an involuntary clenched jaw (reduced displacement) or jaw drops under sudden shock.
+    </div>
+  ),
+  jaw_width: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Width of the lower jaw, detecting masseter muscle contraction.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Horizontal distance between lower jaw landmarks 172 and 397 normalized by eye distance.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Clench your teeth tightly together. You will see the Jaw Width bar increase as the masseter muscles contract.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Teeth-clenching is a primary physical, involuntary reaction to stress, anger, and tension.
+    </div>
+  ),
+  blink_velocity: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> The speed at which you close and open your eyes.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Rate of change of the Eye Aspect Ratio (EAR) across consecutive frames.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Blink rapidly or hard. The Blink Velocity metric will spike.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress increases autonomic nervous system arousal, elevating blink velocity and frequency.
+    </div>
+  ),
+  brow_tension: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Downward contraction and pulling together of the eyebrows.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Distance from eyebrows to eyes normalized by face height.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Furrow your brows or frown. You'll see the Brow Tension bar rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Furrowing the brow is a universal indicator of concentration, anger, or distress.
+    </div>
+  ),
+  lip_compression: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Squeezing the lips tightly together, making them thin.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Vertical mouth gap divided by horizontal mouth width.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Press your lips tightly together into a thin line. Lip Compression bar will rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Lip compression is an involuntary subconscious cue for anxiety, holding back speech, or cognitive load.
+    </div>
+  ),
+  head_tilt: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Lateral head tilt angle and movement.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> The angle of the line connecting left and right eyes relative to the horizontal axis.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Tilt your head to the side. The Head Tilt degrees will increase.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Restlessness, frequent head adjustments, or rigid posture are correlated with discomfort and stress.
+    </div>
+  )
+};
+
+const voiceParamDetails = {
+  f0_mean: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Fundamental frequency (mean pitch) of your voice.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Autocorrelation of voiced audio frames restricted to calibrated pitch bounds.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak in a high-pitched voice, then a low-pitched voice. The Pitch Hz value will change.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Tension in laryngeal muscles from stress tightens the vocal cords, raising fundamental pitch.
+    </div>
+  ),
+  jitter_percent: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Micro-instability and cycle-to-cycle frequency variations of vocal vibrations.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Relative Average Perturbation (RAP) of pitch periods between consecutive frames.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak with a shaky, trembling voice, or whisper. You will see Jitter percent rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Physiological stress reduces laryngeal muscle stability, leading to higher jitter.
+    </div>
+  ),
+  shimmer_db: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Cycle-to-cycle variation in the amplitude (loudness) of the vocal fold vibration.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Average decibel amplitude deviation between adjacent voiced frames.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak with an unstable, trembling loudness. Shimmer will increase.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress causes irregular vocal fold closure, which makes loudness fluctuate microscopically.
+    </div>
+  ),
+  speaking_rate_proxy: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Speaking rate and breathiness proxy using zero-crossing rate.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Frequency of sign changes in the audio waveform over time.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak extremely fast, or blow air/sigh into the microphone. Speaking Rate bar will rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Agitation, panic, or anxiety increases speech rate and shallow breathiness, elevating ZCR.
+    </div>
+  ),
+  voice_intensity: (
+    <div>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Vocal loudness and energy.<br/>
+      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Root-Mean-Square (RMS) energy of the audio chunk relative to calibrated noise threshold.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak loudly or shout, then whisper. Voice Intensity bar will scale.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress triggers fight responses (elevated loudness) or freeze/anxiety responses (muted volume).
+    </div>
+  )
+};
+
 export default function RealtimeMonitor() {
   const [active, setActive] = useState(false);
   const [result, setResult] = useState(null);
@@ -41,6 +138,10 @@ export default function RealtimeMonitor() {
   const [faceIndicators, setFaceIndicators] = useState(null);
   const [voiceIndicators, setVoiceIndicators] = useState(null);
   const esRef = useRef(null);
+
+  // Parameter explorer states
+  const [selectedFaceParam, setSelectedFaceParam] = useState('');
+  const [selectedVoiceParam, setSelectedVoiceParam] = useState('');
 
   // Calibration states
   const [calibrationPhase, setCalibrationPhase] = useState('idle');
@@ -118,8 +219,23 @@ export default function RealtimeMonitor() {
               score: Math.round(data.fused_score * 100),
             }
           ]);
+          // Sync modality scores from fused stream to match decay timing (Fix voice score card display)
+          if (data.per_modality) {
+            if (data.per_modality.face !== undefined && data.per_modality.face !== null) {
+              setFaceScore(data.per_modality.face.score);
+            } else {
+              setFaceScore(null);
+            }
+            if (data.per_modality.voice !== undefined && data.per_modality.voice !== null) {
+              setVoiceScore(data.per_modality.voice.score);
+            } else {
+              setVoiceScore(null);
+            }
+          }
         } else if (data.status === 'waiting') {
           setResult(data);
+          setFaceScore(null);
+          setVoiceScore(null);
         }
       } catch (err) {
         console.error("SSE parse error: ", err);
@@ -211,8 +327,8 @@ export default function RealtimeMonitor() {
         }
       }
       
-      // Update vocal stress level only in normal monitoring mode
-      if (calibrationPhase === 'idle' && !calibrating && data && data.score !== undefined) {
+      // Update vocal stress level only in normal monitoring mode, ignoring null (silence) to avoid immediate clear
+      if (calibrationPhase === 'idle' && !calibrating && data && data.score !== undefined && data.score !== null) {
         setVoiceScore(data.score);
       }
     } catch (err) {
@@ -363,6 +479,51 @@ export default function RealtimeMonitor() {
               </div>
             )}
           </div>
+          
+          {/* Biomarker Guide Dropdown for Face */}
+          <div style={{ marginTop: 8, borderTop: '1px solid rgba(0, 242, 255, 0.1)', paddingTop: 12 }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6, fontWeight: 600 }}>💡 Face Biomarker Guide & Tester</label>
+            <select 
+              value={selectedFaceParam} 
+              onChange={(e) => setSelectedFaceParam(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'rgba(20, 25, 45, 0.8)',
+                color: 'var(--text-color)',
+                border: '1px solid rgba(0, 242, 255, 0.2)',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                outline: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit'
+              }}
+            >
+              <option value="">-- Choose facial biomarker to test/learn --</option>
+              <option value="jaw_displacement">Jaw Displacement (Mouth Open)</option>
+              <option value="jaw_width">Jaw Width (Masseter Clench)</option>
+              <option value="blink_velocity">Blink Velocity (Stress Blink)</option>
+              <option value="brow_tension">Brow Tension (Contraction)</option>
+              <option value="lip_compression">Lip Compression</option>
+              <option value="head_tilt">Head Tilt / Movement</option>
+            </select>
+            
+            {selectedFaceParam && (
+              <div className="fade-in-up" style={{
+                marginTop: 10,
+                background: 'rgba(0, 242, 255, 0.04)',
+                border: '1px solid rgba(0, 242, 255, 0.15)',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: '0.75rem',
+                lineHeight: '1.45',
+                color: 'var(--text-color)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)'
+              }}>
+                {faceParamDetails[selectedFaceParam]}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Voice Card */}
@@ -410,14 +571,73 @@ export default function RealtimeMonitor() {
             {active && voiceIndicators ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <IndicatorBar label="Pitch (F0 Mean)" value={voiceIndicators.f0_mean} scale={300.0} format={(v) => `${Math.round(v)} Hz`} />
-                <IndicatorBar label="Jitter (Micro-instability)" value={voiceIndicators.jitter_percent} scale={5.0} format={(v) => `${(v).toFixed(2)}%`} />
+                <IndicatorBar 
+                  label="Jitter (Micro-instability)" 
+                  value={voiceIndicators.jitter_percent} 
+                  scale={5.0} 
+                  format={(v) => `${(v).toFixed(2)}%`}
+                  valueColor={voiceIndicators.jitter_reliable !== false ? null : '#FF9800'}
+                  extra={voiceIndicators.jitter_reliable === false && (
+                    <span style={{
+                      fontSize: '0.65rem', color: '#FF9800',
+                      background: '#FF980022', borderRadius: 4,
+                      padding: '1px 6px', fontWeight: 'bold', border: '1px solid #FF980044'
+                    }}>
+                      ⚠ noisy mic
+                    </span>
+                  )}
+                />
                 <IndicatorBar label="Shimmer (Amplitude Var)" value={voiceIndicators.shimmer_db} scale={3.0} format={(v) => `${(v).toFixed(2)} dB`} />
                 <IndicatorBar label="Speaking Rate (ZCR)" value={voiceIndicators.speaking_rate_proxy} scale={0.2} format={(v) => `${(v * 100).toFixed(0)}%`} />
-                <IndicatorBar label="Voice Intensity (RMS)" value={voiceIndicators.voice_intensity} scale={0.1} format={(v) => `${(v * 1000).toFixed(0)}`} />
+                <IndicatorBar label="Voice Intensity" value={voiceIndicators.voice_intensity} scale={0.3} format={(v) => `${Math.round(v * 100)}%`} />
               </div>
             ) : (
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
                 {active ? "Waiting for voice buffer..." : "Start session to enable microphone"}
+              </div>
+            )}
+          </div>
+
+          {/* Biomarker Guide Dropdown for Voice */}
+          <div style={{ marginTop: 8, borderTop: '1px solid rgba(0, 242, 255, 0.1)', paddingTop: 12 }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6, fontWeight: 600 }}>💡 Voice Biomarker Guide & Tester</label>
+            <select 
+              value={selectedVoiceParam} 
+              onChange={(e) => setSelectedVoiceParam(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'rgba(20, 25, 45, 0.8)',
+                color: 'var(--text-color)',
+                border: '1px solid rgba(0, 242, 255, 0.2)',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                outline: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit'
+              }}
+            >
+              <option value="">-- Choose vocal biomarker to test/learn --</option>
+              <option value="f0_mean">Pitch (F0 Mean)</option>
+              <option value="jitter_percent">Jitter (Micro-instability)</option>
+              <option value="shimmer_db">Shimmer (Amplitude Var)</option>
+              <option value="speaking_rate_proxy">Speaking Rate (ZCR)</option>
+              <option value="voice_intensity">Voice Intensity</option>
+            </select>
+            
+            {selectedVoiceParam && (
+              <div className="fade-in-up" style={{
+                marginTop: 10,
+                background: 'rgba(0, 242, 255, 0.04)',
+                border: '1px solid rgba(0, 242, 255, 0.15)',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: '0.75rem',
+                lineHeight: '1.45',
+                color: 'var(--text-color)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)'
+              }}>
+                {voiceParamDetails[selectedVoiceParam]}
               </div>
             )}
           </div>

@@ -28,8 +28,7 @@ def _extract_period_with_interpolation(ac, min_lag, max_lag):
             delta = np.clip(delta, -0.5, 0.5)
             return float(km) + delta, float(y2)
     return float(km), float(ac[km])
-
-def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
+def extract_voice_stress_indicators(audio_bytes, sr_target=16000, f0_min=75, f0_max=400):
     """
     Extract 12 acoustic stress biomarkers from a raw audio chunk.
     Designed for 1-3 second chunks. Fast, lightweight, generalizable.
@@ -63,6 +62,11 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
     if y is None or len(y) < sr_target * 0.5:  # less than 0.5 seconds — skip
         return None
 
+    # Fix 4: Ensure loaded audio is normalized to float [-1.0, 1.0] and clamped
+    if y.dtype != np.float32 and y.dtype != np.float64:
+        y = y.astype(np.float32) / 32768.0
+    y = np.clip(y, -1.0, 1.0)
+
     indicators = {}
 
     # Fast autocorrelation-based F0, Jitter, Shimmer, and Voiced Fraction extraction
@@ -75,6 +79,7 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
         periods = []
         amplitudes = []
         f0_voiced = []
+        voiced_amplitudes = []
         
         for frame in frames.T:
             rms_val = np.sqrt(np.mean(frame ** 2))
@@ -82,8 +87,9 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
             
             ac = np.correlate(frame, frame, mode='full')[frame_len - 1:]
             ac = ac / (ac[0] + EPS)
-            min_lag = int(sr / 500)  # 500 Hz max
-            max_lag = int(sr / 60)   # 60 Hz min
+            # Fix 1: Restrict frequency bounds dynamically
+            min_lag = int(sr / f0_max)
+            max_lag = int(sr / f0_min)
             
             refined_period, peak_corr = _extract_period_with_interpolation(ac, min_lag, max_lag)
             periods.append(refined_period)
@@ -91,8 +97,9 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
             # Voice detection criteria: correlation strength > 0.45 and energy > 0.005
             if peak_corr > 0.45 and rms_val > 0.005:
                 f_hz = sr / refined_period
-                if 60 <= f_hz <= 500:
+                if f0_min <= f_hz <= f0_max:
                     f0_voiced.append(f_hz)
+                    voiced_amplitudes.append(rms_val)
                     
         periods = np.array(periods, dtype=float)
         amplitudes = np.array(amplitudes, dtype=float)
@@ -102,9 +109,33 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
         indicators['f0_std']   = float(np.std(f0_voiced))    if len(f0_voiced) > 0 else 0.0
         indicators['f0_range'] = float(np.ptp(f0_voiced))    if len(f0_voiced) > 0 else 0.0
         
-        # 4-5: Jitter and Shimmer
-        jitter  = float(np.mean(np.abs(np.diff(periods))) / (np.mean(periods) + EPS)) if len(periods) > 1 else 0.0
-        shimmer = float(np.mean(np.abs(np.diff(amplitudes))) / (np.mean(amplitudes) + EPS)) if len(amplitudes) > 1 else 0.0
+        # Fix 2: Jitter and Shimmer calculations derived from F0 track / voiced frames
+        f0_voiced_arr = np.array(f0_voiced)
+        voiced_amplitudes = np.array(voiced_amplitudes)
+        
+        if len(f0_voiced_arr) >= 3:
+            # Convert F0 (Hz) to periods (samples)
+            periods_from_f0 = sr / (f0_voiced_arr + 1e-10)
+
+            # Jitter = mean absolute period deviation / mean period (RAP)
+            period_diffs = np.abs(np.diff(periods_from_f0))
+            mean_period  = np.mean(periods_from_f0)
+            jitter_raw   = float(np.mean(period_diffs) / (mean_period + 1e-10))
+            jitter_pct   = jitter_raw * 100
+            
+            indicators['jitter_percent'] = float(np.clip(jitter_pct, 0.0, 5.0))
+            indicators['jitter_reliable'] = bool(jitter_pct < 3.0)
+            
+            # Shimmer: amplitude variation between consecutive voiced frames
+            if len(voiced_amplitudes) >= 3:
+                shimmer_raw = float(np.mean(np.abs(np.diff(voiced_amplitudes))) / (np.mean(voiced_amplitudes) + 1e-10))
+                indicators['shimmer_db'] = float(np.clip(shimmer_raw * 20, 0.0, 3.0))
+            else:
+                indicators['shimmer_db'] = 0.0
+        else:
+            indicators['jitter_percent'] = 0.0
+            indicators['jitter_reliable'] = False
+            indicators['shimmer_db'] = 0.0
         
         # 12: Voiced fraction
         voiced_frac = float(len(f0_voiced) / len(frames)) if len(frames) > 0 else 0.5
@@ -113,12 +144,11 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
     except Exception as e:
         print(f"Feature extraction error: {e}")
         indicators['f0_mean'] = indicators['f0_std'] = indicators['f0_range'] = 0.0
-        jitter, shimmer = 0.0, 0.0
+        indicators['jitter_percent'] = 0.0
+        indicators['jitter_reliable'] = False
+        indicators['shimmer_db'] = 0.0
         indicators['voiced_fraction'] = 0.5
         
-    indicators['jitter_percent'] = min(jitter * 100, 10.0)  # cap at 10%
-    indicators['shimmer_db']     = min(shimmer * 20, 5.0)   # approximate dB scale
-
     # 6: HNR approximation via autocorrelation
     try:
         ac_full = np.correlate(y, y, mode='full')[len(y) - 1:]
@@ -174,13 +204,6 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000):
         indicators['pause_ratio'] = float(pause_frames / (len(rms) + EPS))
     except Exception:
         indicators['pause_ratio'] = 0.0
-
-    # 12: Voiced fraction
-    try:
-        voiced_frac = float(np.sum(voiced_flag) / (len(voiced_flag) + EPS)) if 'voiced_flag' in locals() else 0.5
-    except Exception:
-        voiced_frac = 0.5
-    indicators['voiced_fraction'] = voiced_frac
 
     # Feature vector for model (fixed order, 12 features)
     feature_vec = np.array([

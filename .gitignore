@@ -78,4 +78,5 @@ node_modules/
 # ===========================================
 # Reports & Charts (generated artifacts)
 # ===========================================
-reports/
+reports/*
+!reports/*.md

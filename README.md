@@ -79,6 +79,10 @@ StressDetectionUsingML/
 │           ├── FaceStream.jsx        # Webcam capture + MediaPipe landmark streaming
 │           └── WaveformRecorder.jsx  # Microphone capture + chunked audio streaming
 │
+├── dataset_extracted/            # User-extracted StressID baseline indicator CSVs
+│   ├── face_indicators_stressid.csv
+│   └── voice_indicators_stressid.csv
+│
 ├── docs/                         # Architecture & optimization documentation
 │   ├── OPTIMIZATION_STRATEGY.md
 │   └── PHASE1_REALTIME_ARCHITECTURE.md
@@ -86,6 +90,7 @@ StressDetectionUsingML/
 └── reports/                      # Performance benchmarks & analysis reports
     ├── performance_charts.png
     ├── performance_report.md
+    ├── project_report.md             # Comprehensive project report (June 2026)
     └── stress_pattern_reliability_report.md
 ```
 
@@ -95,16 +100,20 @@ The system uses a **three-expert fusion** approach:
 
 | Expert | Input | Model | Latency |
 |--------|-------|-------|---------|
-| Facial | Webcam frames → MediaPipe landmarks | Gradient Boosting | ~8 ms |
-| Voice | Microphone chunks → MFCC + pitch | Gradient Boosting | ~140 ms |
+| Facial | Webcam frames → MediaPipe landmarks | Voting Ensemble (GB + RF + SVM) | ~8 ms |
+| Voice | Microphone chunks → 12 Acoustic Biomarkers | Gradient Boosting | ~15 ms |
 | Physiological | EEG + GSR signals | Random Forest | ~5 ms |
 
 Results are **fused via a weighted confidence engine** and streamed in real-time to the frontend via Server-Sent Events (SSE).
 
 ### Key Design Decisions
 
+- **Interactive Biomarker Guide**: The UI includes a built-in parameter explorer for both Face and Voice. Users can dynamically learn how landmarks (like masseter clench, jaw width) and audio features (like Jitter RAP, Shimmer) are calculated, how they map to physiological stress, and instructions on how to test them.
 - **Personal Baseline Calibration**: A 3-phase wizard (silence → voice → face) builds a personal reference frame, so stress is measured _relative to the user's own calm state_.
-- **OS Thread Pool**: CPU-heavy `librosa` audio processing runs in `eventlet.tpool` to avoid GIL blocking.
+- **Soft-Voting Ensemble Classifier**: The facial expert employs an ensemble of Gradient Boosting, Random Forest, and Support Vector Machine (SVC) trained on augmented face landmark geometries balanced via SMOTE (accuracy: 65.27% under real-world noise simulation).
+- **Fast Autocorrelation Pitch Extractor**: Voice feature extraction uses autocorrelation with parabolic peak interpolation. This yields an execution time of **<15ms** (from 4.6 seconds using librosa's pyin) and resolves raw jitter flatline discretization bugs.
+- **15-Second Decay Buffer**: The fusion engine holds the voice stress score in its buffer for 15 seconds after speaking ends, ensuring conversation-style scoring continuity while the user is silent.
+- **OS Thread Pool**: CPU-heavy audio processing runs in `eventlet.tpool` to avoid GIL blocking.
 - **Web Worker**: Face POST requests run in a background browser thread to keep the webcam feed smooth at 30fps.
 
 ## Running Tests

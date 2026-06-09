@@ -12,6 +12,7 @@ import mediapipe as mp
 # Check if we can use legacy solutions or modern Tasks API
 USE_LEGACY_MEDIAPIPE = False
 try:
+    # pyrefly: ignore [missing-import]
     import mediapipe.solutions.face_mesh as mp_face_mesh
     USE_LEGACY_MEDIAPIPE = True
 except (ImportError, AttributeError):
@@ -45,6 +46,7 @@ class FaceMeshWrapper:
             )
             self.detector = vision.FaceLandmarker.create_from_options(options)
         else:
+            # pyrefly: ignore [missing-import]
             import mediapipe.solutions.face_mesh as mp_face_mesh
             self.fm = mp_face_mesh.FaceMesh(
                 static_image_mode=self.static_mode,
@@ -88,6 +90,8 @@ class FaceMeshWrapper:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -203,7 +207,6 @@ class MultimodalStressDetector:
             mar = lip_height / mouth_width if mouth_width > 0 else 0
             
             # Head Pose (Tilt/Rotation proxy)
-            nose_tip = landmarks[1]
             face_width = get_dist(234, 454)
             
             geom_features = [
@@ -241,11 +244,7 @@ class MultimodalStressDetector:
             return np.zeros(84), None
 
     def extract_voice_features(self, audio_path):
-        # ... (Existing implementation kept same, omitted for brevity, logic unmodified) ...
-        # (Please assume standard extraction logic here or re-copy if needed)
-        # For simplicity in this replacement, I'll invoke the original logic or a simplified version
-        # You should ideally inspect and keep the original rigorous extraction code.
-        # Here I paste the robust version:
+        """Extract 140 audio features from a WAV file using librosa."""
         try:
             # Fix: duration=None to read full temp file (which is specifically cut to buffer length)
             y, sr = librosa.load(audio_path, duration=None)
@@ -449,44 +448,28 @@ def extract_gsr_features(gsr_data, fs=4):
     
     return feats
 
-def extract_physiological_features(eeg_data=None, gsr_data=None):
-    import inspect
+def extract_physiological_features(eeg_data=None, gsr_data=None, pad_to_132=True):
     import numpy as np
-    
-    # Check if we should pad to 132 features for model compatibility (M3/I1/etc.)
-    curr_frame = inspect.currentframe()
-    frame = curr_frame.f_back if curr_frame else None
-    pad_to_132 = False
-    while frame:
-        globals_dict = frame.f_globals
-        if 'physio_expert' in globals_dict or 'physio_scaler' in globals_dict:
-            pad_to_132 = True
-            break
-        filename = frame.f_code.co_filename.lower()
-        if 'app.py' in filename:
-            pad_to_132 = True
-            break
-        frame = frame.f_back
-        
+
     if pad_to_132:
         features = []
         if eeg_data is not None and len(eeg_data) > 0:
             eeg_arr = np.array(eeg_data)
             features.extend([
-                np.mean(eeg_arr), np.std(eeg_arr), np.median(eeg_arr), np.max(eeg_arr), np.min(eeg_arr), 
-                np.var(eeg_arr), np.percentile(eeg_arr, 25), np.percentile(eeg_arr, 75), 
+                np.mean(eeg_arr), np.std(eeg_arr), np.median(eeg_arr), np.max(eeg_arr), np.min(eeg_arr),
+                np.var(eeg_arr), np.percentile(eeg_arr, 25), np.percentile(eeg_arr, 75),
                 np.max(eeg_arr) - np.min(eeg_arr), np.mean(np.abs(np.diff(eeg_arr)))
             ])
             while len(features) < 66:
                 features.append(0.0)
         else:
             features.extend([0.0] * 66)
-            
+
         if gsr_data is not None and len(gsr_data) > 0:
             gsr_arr = np.array(gsr_data)
             gsr_features = [
-                np.mean(gsr_arr), np.std(gsr_arr), np.median(gsr_arr), np.max(gsr_arr), np.min(gsr_arr), 
-                np.var(gsr_arr), np.percentile(gsr_arr, 25), np.percentile(gsr_arr, 75), 
+                np.mean(gsr_arr), np.std(gsr_arr), np.median(gsr_arr), np.max(gsr_arr), np.min(gsr_arr),
+                np.var(gsr_arr), np.percentile(gsr_arr, 25), np.percentile(gsr_arr, 75),
                 np.max(gsr_arr) - np.min(gsr_arr), np.mean(np.abs(np.diff(gsr_arr)))
             ]
             features.extend(gsr_features)
@@ -494,7 +477,7 @@ def extract_physiological_features(eeg_data=None, gsr_data=None):
                 features.append(0.0)
         else:
             features.extend([0.0] * 66)
-            
+
         return np.array(features[:132])
     else:
         # Standard 42 EEG + 9 GSR features (total 51)

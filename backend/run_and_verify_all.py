@@ -167,6 +167,7 @@ else:
         _training_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training')
         if _training_dir not in _sys.path:
             _sys.path.insert(0, _training_dir)
+        # pyrefly: ignore [missing-import]
         from extract_face_indicators_offline import compute_18_indicators
         res = compute_18_indicators(test_face_img)
         assert res is not None and len(res) == 18
@@ -180,6 +181,18 @@ else:
         f1_msg = f"Indicator extraction failed: {e}"
 results['F1'] = (f1_status, f1_msg)
 print(f"[{f1_status}] {f1_msg}")
+
+# Pre-generate shared audio_bytes at module scope so downstream tests (A3, A4, R1) never crash.
+_sr = 16000
+_t = np.linspace(0, 2.0, _sr * 2)
+np.random.seed(42)
+_freqs = 150.0 * (1 + 0.005 * np.cumsum(np.random.randn(len(_t)) * 0.01))
+_phase = 2 * np.pi * np.cumsum(_freqs / _sr)
+_wave = 0.5 * np.sin(_phase) * (1 + 0.03 * np.sin(2 * np.pi * 5 * _t))
+_wave += 0.005 * np.random.randn(len(_wave))
+_buf = io.BytesIO()
+sf.write(_buf, _wave.astype(np.float32), _sr, format='WAV')
+audio_bytes = _buf.getvalue()  # module-level: available to all tests
 
 # ---------------------------------------------------------
 # TEST F2: Voice Jitter non-zero
@@ -198,7 +211,7 @@ try:
     
     buf = io.BytesIO()
     sf.write(buf, signal_wave.astype(np.float32), sr, format='WAV')
-    audio_bytes = buf.getvalue()
+    audio_bytes = buf.getvalue()  # also reassign local copy for this test's assertions
     
     from voice_worker import extract_voice_stress_indicators
     res = extract_voice_stress_indicators(audio_bytes, sr_target=sr)
@@ -424,8 +437,40 @@ print(f"[{c2_status}] {c2_msg}")
 
 # ---------------------------------------------------------
 # API Endpoints (TEST A1 - A4, A6, S1, R1)
+# Auto-start the backend server if it is not already running.
 # ---------------------------------------------------------
+import subprocess as _sp
+
 API_BASE = "http://127.0.0.1:5000"
+_server_proc = None
+_server_started_by_us = False
+
+def _server_alive():
+    try:
+        requests.get(f"{API_BASE}/api/health", timeout=2)
+        return True
+    except Exception:
+        return False
+
+if not _server_alive():
+    print("\n[INFO] Backend server not detected — starting it automatically...")
+    _server_proc = _sp.Popen(
+        [sys.executable, "app.py"],
+        cwd=BASE_DIR,
+        stdout=_sp.DEVNULL,
+        stderr=_sp.DEVNULL,
+    )
+    _server_started_by_us = True
+    # Wait up to 25 seconds for server to become ready
+    for _i in range(25):
+        time.sleep(1)
+        if _server_alive():
+            print(f"[INFO] Server ready after {_i+1}s.")
+            break
+    else:
+        print("[WARN] Server did not start in 25s — API tests will fail.")
+else:
+    print("\n[INFO] Backend server already running — skipping auto-start.")
 
 print("\n--- TEST A1: Health API Endpoint ---")
 try:
@@ -441,20 +486,22 @@ except Exception as e:
 results['A1'] = (a1_status, a1_msg)
 print(f"[{a1_status}] {a1_msg}")
 
+# Pre-define payload at module scope so A4, R1 can reference it even if A2's try block fails.
+payload = {
+    'indicators': {
+        'left_ear': 0.18, 'right_ear': 0.17, 'avg_ear': 0.175, 'blink_velocity': 0.08,
+        'brow_descent_left': 0.22, 'brow_descent_right': 0.23, 'brow_asymmetry': 0.018,
+        'lip_compression': 0.10, 'jaw_displacement': 1.60, 'mouth_corner_pull': 0.24,
+        'forehead_tension': 0.24, 'face_height_norm': 2.10, 'head_tilt': 4.20,
+        'temporal_x_var': 0.009, 'temporal_y_var': 0.007, 'eye_openness_ratio': 0.175,
+        'landmark_confidence': 0.90, 'nose_wrinkle': 0.18, 'smile_score': 0.0, 'smile_detected': False
+    },
+    'user_id': 'test_user'
+}
+
 print("\n--- TEST A2: Stream Face API Endpoint ---")
 try:
     url = f"{API_BASE}/api/stream/face"
-    payload = {
-        'indicators': {
-            'left_ear': 0.18, 'right_ear': 0.17, 'avg_ear': 0.175, 'blink_velocity': 0.08,
-            'brow_descent_left': 0.22, 'brow_descent_right': 0.23, 'brow_asymmetry': 0.018,
-            'lip_compression': 0.10, 'jaw_displacement': 1.60, 'mouth_corner_pull': 0.24,
-            'forehead_tension': 0.24, 'face_height_norm': 2.10, 'head_tilt': 4.20,
-            'temporal_x_var': 0.009, 'temporal_y_var': 0.007, 'eye_openness_ratio': 0.175,
-            'landmark_confidence': 0.90, 'nose_wrinkle': 0.18, 'smile_score': 0.0, 'smile_detected': False
-        },
-        'user_id': 'test_user'
-    }
     r = requests.post(url, json=payload)
     data = r.json()
     assert r.status_code == 200
@@ -582,10 +629,10 @@ try:
     t1.join(); t2.join()
     wall = time.time() - t0
     
-    face_ms = results_r1['face']['time'] * 1000
-    voice_ms = results_r1['voice']['time'] * 1000
-    assert results_r1['face']['status'] == 200
-    assert results_r1['voice']['status'] == 200
+    face_ms = results_r1.get('face', {}).get('time', 0) * 1000
+    voice_ms = results_r1.get('voice', {}).get('time', 0) * 1000
+    assert results_r1.get('face', {}).get('status') == 200, f"Face thread status: {results_r1.get('face')}"
+    assert results_r1.get('voice', {}).get('status') == 200, f"Voice thread status: {results_r1.get('voice')}"
     assert face_ms < 500
     assert voice_ms < 3000
     r1_status = "PASS"
@@ -595,6 +642,15 @@ except Exception as e:
     r1_msg = f"Concurrency check failed: {e}"
 results['R1'] = (r1_status, r1_msg)
 print(f"[{r1_status}] {r1_msg}")
+
+# Shutdown server if we started it
+if _server_started_by_us and _server_proc is not None:
+    print("\n[INFO] Shutting down auto-started backend server...")
+    _server_proc.terminate()
+    try:
+        _server_proc.wait(timeout=5)
+    except Exception:
+        _server_proc.kill()
 
 # ---------------------------------------------------------
 # Integrity & Verification (TEST D1, D2, I1)
@@ -638,6 +694,31 @@ results['D2'] = (d2_status, d2_msg)
 print(f"[{d2_status}] {d2_msg}")
 
 print("\n--- TEST I1: Multimodal Fusion Integration Scenarios ---")
+# Safe fallbacks for variables defined inside M1/M2/M3 try blocks
+try:
+    calm_face
+except NameError:
+    calm_face = np.zeros((1, 18), dtype=np.float32)
+try:
+    stress_face
+except NameError:
+    stress_face = np.ones((1, 18), dtype=np.float32) * 0.5
+try:
+    calm_voice
+except NameError:
+    calm_voice = np.zeros((1, 12), dtype=np.float32)
+try:
+    stress_voice
+except NameError:
+    stress_voice = np.ones((1, 12), dtype=np.float32) * 0.5
+try:
+    calm_phys
+except NameError:
+    calm_phys = np.zeros(132)
+try:
+    stress_phys
+except NameError:
+    stress_phys = np.ones(132) * 0.5
 try:
     # 1. Calm User
     probs_calm = {

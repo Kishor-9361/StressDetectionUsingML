@@ -410,16 +410,15 @@ def stream_face():
         raw_avg_ear = indicators.get('avg_ear', 0.3)
         raw_brow_l = indicators.get('brow_descent_left', 0.1)
         raw_brow_r = indicators.get('brow_descent_right', 0.1)
-        raw_jaw = indicators.get('jaw_displacement', 1.6)
+        raw_jaw = indicators.get('jaw_displacement', 1.85)
         
         left_ear = raw_left_ear
         right_ear = raw_right_ear
         avg_ear = raw_avg_ear
         brow_l = raw_brow_l
         brow_r = raw_brow_r
-        # A baseline linear mapping for jaw displacement -> jaw tension proxy:
-        # 0.68 * (jaw_displacement / 1.6)
-        jaw_tension = 0.68 * (raw_jaw / 1.6) if raw_jaw > 0 else 0.68
+        # Use raw jaw displacement directly as feature 9 (index 8)
+        jaw_tension = raw_jaw
         eye_openness = indicators.get('eye_openness_ratio', avg_ear)
         
         if cal.is_complete:
@@ -532,10 +531,21 @@ def stream_voice():
         pass
 
     try:
+        from calibration import get_or_create
+        cal = get_or_create(user_id)
+        
+        # Phase 7: Set F0 bounds from calibration if available
+        if cal.is_complete and cal.f0_mean is not None and cal.f0_mean > 60:
+            f0_min = max(60.0, cal.f0_mean * 0.40)   # 40% below personal baseline
+            f0_max = min(500.0, cal.f0_mean * 1.80)   # 80% above personal baseline
+        else:
+            f0_min = 75.0
+            f0_max = 400.0
+
         # Run CPU-heavy librosa processing in eventlet's built-in OS thread pool
         # This keeps the main greenlet loop completely free without spawning subprocesses on Windows
         import eventlet.tpool
-        result = eventlet.tpool.execute(extract_voice_stress_indicators, audio_bytes)
+        result = eventlet.tpool.execute(extract_voice_stress_indicators, audio_bytes, 16000, f0_min, f0_max)
         
         if result is None:
             return jsonify({'score': None, 'reason': 'audio_too_short_or_invalid'}), 200
