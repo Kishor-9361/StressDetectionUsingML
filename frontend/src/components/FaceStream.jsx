@@ -11,7 +11,6 @@ function computeStressIndicators(landmarks, imageWidth, imageHeight, history) {
   const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 
   const faceH = dist(pt(10), pt(152)) + 1e-6;
-  const faceW = dist(pt(234), pt(454)) + 1e-6;
   const iod   = dist(pt(33), pt(263)) + 1e-6; // inter-ocular distance
 
   // EAR (Eye Aspect Ratio)

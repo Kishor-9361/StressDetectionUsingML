@@ -143,6 +143,9 @@ export default function RealtimeMonitor() {
   const [selectedFaceParam, setSelectedFaceParam] = useState('');
   const [selectedVoiceParam, setSelectedVoiceParam] = useState('');
 
+  // Server Connection Status
+  const [serverStatus, setServerStatus] = useState('disconnected'); // 'connected', 'connecting', 'disconnected'
+
   // Calibration states
   const [calibrationPhase, setCalibrationPhase] = useState('idle');
   const [isCalibrated, setIsCalibrated] = useState(false);
@@ -153,6 +156,26 @@ export default function RealtimeMonitor() {
   const [smoothFusedScore, setSmoothFusedScore] = useState(0);
   const [smoothFaceScore, setSmoothFaceScore] = useState(null);
   const [smoothVoiceScore, setSmoothVoiceScore] = useState(null);
+
+  // Automatic Background Health Ping
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:5000/api/health');
+        if (response.ok) {
+          setServerStatus('connected');
+        } else {
+          setServerStatus('disconnected');
+        }
+      } catch (err) {
+        setServerStatus('disconnected');
+      }
+    };
+    
+    checkHealth();
+    const interval = setInterval(checkHealth, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Easing/smoothing loops for high-responsiveness display updates
   useEffect(() => {
@@ -206,8 +229,15 @@ export default function RealtimeMonitor() {
   }, [voiceScore, active]);
 
   const connectSSE = () => {
+    setServerStatus('connecting');
     const es = new EventSource('http://127.0.0.1:5000/api/stream/fused');
+    
+    es.onopen = () => {
+      setServerStatus('connected');
+    };
+    
     es.onmessage = (e) => {
+      setServerStatus('connected');
       try {
         const data = JSON.parse(e.data);
         if (data.status === 'active') {
@@ -243,6 +273,7 @@ export default function RealtimeMonitor() {
     };
     es.onerror = () => {
       console.error("SSE Connection failed.");
+      setServerStatus('disconnected');
       es.close();
     };
     esRef.current = es;
@@ -348,11 +379,20 @@ export default function RealtimeMonitor() {
 
   return (
     <div className="neon-card fade-in-up" style={{ padding: 24, marginTop: 16 }}>
+      {/* Pulse animation styles for server connection */}
+      <style>{`
+        @keyframes pulseGlow {
+          0% { transform: scale(0.92); opacity: 0.5; }
+          50% { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(0.92); opacity: 0.5; }
+        }
+      `}</style>
+      
       <h3 className="text-center mb-4 neon-text" style={{ fontSize: '1.8rem' }}>🧠 Real-Time Multimodal Monitoring</h3>
       
       {/* Controls & Overall Fused Assessment */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24, borderBottom: '1px solid rgba(0, 242, 255, 0.1)', paddingBottom: 20 }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {!active ? (
             <button className="btn btn-neon" onClick={startMonitoring} style={{ fontSize: '1.05rem', padding: '12px 28px' }}>
               ▶ Start Session
@@ -369,6 +409,41 @@ export default function RealtimeMonitor() {
               )}
             </div>
           )}
+          
+          {/* Server Connection Status Badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: '0.75rem',
+            padding: '6px 14px',
+            borderRadius: 20,
+            background: 'rgba(10, 15, 30, 0.6)',
+            border: `1px solid ${
+              serverStatus === 'connected' ? 'rgba(0, 242, 255, 0.25)' :
+              serverStatus === 'connecting' ? 'rgba(255, 152, 0, 0.25)' : 'rgba(244, 67, 54, 0.25)'
+            }`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            transition: 'border-color 0.3s ease'
+          }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: serverStatus === 'connected' ? '#00f2ff' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
+              display: 'inline-block',
+              animation: serverStatus !== 'disconnected' ? 'pulseGlow 1.8s infinite ease-in-out' : 'none',
+              boxShadow: `0 0 8px ${serverStatus === 'connected' ? '#00f2ff' : serverStatus === 'connecting' ? '#FF9800' : '#F44336'}`
+            }} />
+            <span style={{
+              color: serverStatus === 'connected' ? '#00f2ff' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
+              fontWeight: 700,
+              letterSpacing: '0.6px',
+              fontFamily: 'monospace'
+            }}>
+              {serverStatus === 'connected' ? 'SERVER ACTIVE' : serverStatus === 'connecting' ? 'CONNECTING...' : 'SERVER OFFLINE'}
+            </span>
+          </div>
         </div>
 
         {active && !calibrating && result && result.status === 'active' && (
@@ -660,45 +735,118 @@ export default function RealtimeMonitor() {
         </div>
       )}
 
-      {/* Mini trend chart — last 30 readings */}
-      {active && !calibrating && history.length > 1 && (
-        <div style={{ background: 'rgba(5, 5, 16, 0.6)', padding: 16, borderRadius: 12, border: '1px solid rgba(0, 242, 255, 0.1)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>Live Session Stress Trend Timeline</div>
-          <svg width="100%" height={80} style={{ display: 'block', overflow: 'visible' }}>
-            <g>
-              {history.map((h, i) => {
-                const x = (i / (history.length - 1)) * 100;
-                const y = 75 - (h.score / 100) * 60;
-                return i === 0 ? null : (
-                  <line key={i}
-                    x1={`${((i - 1) / (history.length - 1)) * 100}%`}
-                    y1={75 - (history[i - 1].score / 100) * 60}
-                    x2={`${x}%`} 
-                    y2={y}
-                    stroke={h.score > 70 ? LEVEL_COLOR.High : h.score > 40 ? LEVEL_COLOR.Moderate : LEVEL_COLOR.Low}
-                    strokeWidth={3.5}
-                    strokeLinecap="round"
-                  />
-                );
-              })}
-              {/* Highlight current point */}
-              {history.length > 0 && (
-                <circle
-                  cx="100%"
-                  cy={75 - (history[history.length - 1].score / 100) * 60}
-                  r={5}
-                  fill={history[history.length - 1].score > 70 ? LEVEL_COLOR.High : history[history.length - 1].score > 40 ? LEVEL_COLOR.Moderate : LEVEL_COLOR.Low}
-                  style={{ filter: 'drop-shadow(0px 0px 4px rgba(0,242,255,0.6))' }}
+      {/* Professional Clinical-Grade Real-Time Stress Trend Chart */}
+      {active && !calibrating && history.length > 1 && (() => {
+        const chartPoints = history.map((h, i) => {
+          const x = 45 + (i / Math.max(1, history.length - 1)) * 440; // width is 500, scalable region
+          const y = 130 - (h.score / 100) * 115; // bottom at y=130, height scaled
+          return { x, y };
+        });
+
+        const lastPt = chartPoints[chartPoints.length - 1];
+        const lastScore = history[history.length - 1]?.score || 0;
+        const trendColor = lastScore > 70 ? LEVEL_COLOR.High : lastScore > 40 ? LEVEL_COLOR.Moderate : LEVEL_COLOR.Low;
+
+        const strokePath = chartPoints.length > 0 
+          ? `M ${chartPoints.map(p => `${p.x},${p.y}`).join(' L ')}` 
+          : '';
+
+        const fillPath = chartPoints.length > 0 
+          ? `M 45,130 L ${chartPoints.map(p => `${p.x},${p.y}`).join(' L ')} L ${chartPoints[chartPoints.length - 1].x},130 Z` 
+          : '';
+
+        return (
+          <div style={{ 
+            background: 'rgba(10, 15, 30, 0.5)', 
+            padding: 20, 
+            borderRadius: 16, 
+            border: '1px solid rgba(0, 242, 255, 0.1)',
+            boxShadow: '0 4px 24px rgba(0, 0, 0, 0.3)',
+            marginBottom: 24
+          }}>
+            <div style={{ 
+              fontSize: '0.85rem', 
+              color: 'var(--text-color)', 
+              marginBottom: 16, 
+              fontWeight: 600,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span>📈 Real-Time Multi-Modal Stress Trend</span>
+              <span style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '0.75rem', 
+                color: 'var(--text-muted)',
+                background: 'rgba(255,255,255,0.03)',
+                padding: '2px 8px',
+                borderRadius: 4
+              }}>
+                Resolution: 1.0s/step
+              </span>
+            </div>
+            
+            <svg viewBox="0 0 500 150" width="100%" height="150" style={{ display: 'block', overflow: 'visible' }}>
+              <defs>
+                <linearGradient id="trendAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={trendColor} stopOpacity="0.25" />
+                  <stop offset="100%" stopColor={trendColor} stopOpacity="0.00" />
+                </linearGradient>
+              </defs>
+              
+              {/* Horizontal Grid lines */}
+              <line x1="45" y1="15" x2="485" y2="15" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+              <line x1="45" y1="49.5" x2="485" y2="49.5" stroke="rgba(244,67,54,0.12)" strokeWidth="1" strokeDasharray="4,4" />
+              <line x1="45" y1="84" x2="485" y2="84" stroke="rgba(255,152,0,0.12)" strokeWidth="1" strokeDasharray="4,4" />
+              <line x1="45" y1="130" x2="485" y2="130" stroke="rgba(0,242,255,0.15)" strokeWidth="1" />
+
+              {/* Y Axis Labels */}
+              <text x="36" y="19" fill="#F44336" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">100%</text>
+              <text x="36" y="53" fill="rgba(244,67,54,0.7)" fontSize="9px" fontFamily="monospace" textAnchor="end">70%</text>
+              <text x="36" y="87.5" fill="rgba(255,152,0,0.7)" fontSize="9px" fontFamily="monospace" textAnchor="end">40%</text>
+              <text x="36" y="133" fill="#00f2ff" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">0%</text>
+
+              {/* Threshold region labels */}
+              <text x="480" y="26" fill="rgba(244,67,54,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">HIGH STRESS</text>
+              <text x="480" y="60" fill="rgba(255,152,0,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">MODERATE</text>
+              <text x="480" y="110" fill="rgba(0,242,255,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">CALM</text>
+
+              {/* Filled Area Chart */}
+              {fillPath && <path d={fillPath} fill="url(#trendAreaGradient)" />}
+
+              {/* Stroke line (glowing) */}
+              {strokePath && (
+                <path 
+                  d={strokePath} 
+                  fill="none" 
+                  stroke={trendColor} 
+                  strokeWidth="2.5" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  style={{ filter: `drop-shadow(0px 0px 4px ${trendColor}88)` }}
                 />
               )}
-            </g>
-          </svg>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 8 }}>
-            <span>Session Start</span>
-            <span>Now</span>
+
+              {/* Pulse glow dot for latest score */}
+              {lastPt && (
+                <>
+                  <circle cx={lastPt.x} cy={lastPt.y} r={4.5} fill={trendColor} />
+                  <circle cx={lastPt.x} cy={lastPt.y} r={9} fill="none" stroke={trendColor} strokeWidth="1.5">
+                    <animate attributeName="r" values="4.5;13;4.5" dur="1.8s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.8;0;0.8" dur="1.8s" repeatCount="indefinite" />
+                  </circle>
+                </>
+              )}
+            </svg>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
+              <span>Session Start</span>
+              <span style={{ fontWeight: 'bold', color: trendColor }}>Current: {lastScore}%</span>
+              <span>Now</span>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {active && !calibrating && (!result || result.status === 'waiting') && (
         <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }} className="fade-in-up">
