@@ -116,30 +116,39 @@ class MultimodalStressDetector:
     
     def load_model(self, base_path='.'):
         """Load the 3 specialized expert models"""
+        models_dir = os.path.join(base_path, 'expert_models')
         try:
-            # 1. Facial Expert (Trained on facesData - Clean Images)
-            face_path = os.path.join(base_path, 'facial_expert_model.pkl')
+            # 1. Facial Expert
+            face_path = os.path.join(models_dir, 'face_expert_lightweight.pkl')
+            face_scaler_path = os.path.join(models_dir, 'face_scaler_lightweight.pkl')
             if os.path.exists(face_path):
                 with open(face_path, 'rb') as f:
                     self.facial_model = pickle.load(f)
+                if os.path.exists(face_scaler_path):
+                    with open(face_scaler_path, 'rb') as f:
+                        self.facial_scaler = pickle.load(f)
                 print("Loaded Facial Expert Model")
             
-            # 2. Voice Expert (Trained on StressID - Real Audio)
-            voice_path = os.path.join(base_path, 'voice_expert_model.pkl')
+            # 2. Voice Expert
+            voice_path = os.path.join(models_dir, 'voice_expert_lightweight.pkl')
+            voice_scaler_path = os.path.join(models_dir, 'voice_scaler_lightweight.pkl')
             if os.path.exists(voice_path):
                 with open(voice_path, 'rb') as f:
-                    data = pickle.load(f)
-                    self.voice_model = data['model']
-                    self.voice_scaler = data['scaler']
+                    self.voice_model = pickle.load(f)
+                if os.path.exists(voice_scaler_path):
+                    with open(voice_scaler_path, 'rb') as f:
+                        self.voice_scaler = pickle.load(f)
                 print("Loaded Voice Expert Model")
 
-            # 3. Physio Expert (Trained on StressID - Real Biosignals)
-            phys_path = os.path.join(base_path, 'physio_expert_model.pkl')
+            # 3. Physio Expert
+            phys_path = os.path.join(models_dir, 'physio_expert.pkl')
+            phys_scaler_path = os.path.join(models_dir, 'physio_scaler.pkl')
             if os.path.exists(phys_path):
                 with open(phys_path, 'rb') as f:
-                    data = pickle.load(f)
-                    self.phys_model = data['model']
-                    self.phys_scaler = data['scaler']
+                    self.phys_model = pickle.load(f)
+                if os.path.exists(phys_scaler_path):
+                    with open(phys_scaler_path, 'rb') as f:
+                        self.phys_scaler = pickle.load(f)
                 print("Loaded Physio Expert Model")
             
             self.is_trained = True
@@ -163,7 +172,7 @@ class MultimodalStressDetector:
         except: return 0.0
 
     def extract_facial_features(self, image_path):
-        """Advanced MediaPipe-based Feature Extraction"""
+        """Advanced MediaPipe-based Feature Extraction (18 Features for Expert Model)"""
         try:
             img = cv2.imread(image_path)
             if img is None: return None, None
@@ -179,128 +188,77 @@ class MultimodalStressDetector:
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 faces = self.face_cascade.detectMultiScale(gray, 1.3, 5)
                 if len(faces) == 0:
-                    return np.zeros(84), None
+                    return np.zeros(18), None
                 x, y, w, h = faces[0]
-                return np.zeros(84), (int(x), int(y), int(w), int(h))
+                return np.zeros(18), (int(x), int(y), int(w), int(h))
 
-            # 1. High Level Geometric Features
+            # 1. High Level Geometric Features (18 features)
             landmarks = results.multi_face_landmarks[0].landmark
-            
-            def get_dist(p1_idx, p2_idx):
-                p1 = landmarks[p1_idx]
-                p2 = landmarks[p2_idx]
-                return np.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2 + (p1.z-p2.z)**2)
+            pts = np.array([[l.x * w_img, l.y * h_img] for l in landmarks])
 
-            # --- Derived Stress Indicators ---
-            # Eye Aspect Ratio (EAR) - Dilation/Squinting
-            ear_l = (get_dist(160, 144) + get_dist(158, 153)) / (2 * get_dist(33, 133) + 1e-6)
-            ear_r = (get_dist(385, 380) + get_dist(387, 373)) / (2 * get_dist(362, 263) + 1e-6)
-            avg_ear = (ear_l + ear_r) / 2
-            
-            # Brow Tension (Distance between inner brows and eye)
-            brow_dist = get_dist(9, 168) # Bridge of nose to brow center
-            brow_lowering = (get_dist(52, 159) + get_dist(282, 386)) / 2 
-            
-            # Mouth Tension (Lip compression/Lip width)
-            mouth_width = get_dist(61, 291)
-            lip_height = get_dist(13, 14)
-            mar = lip_height / mouth_width if mouth_width > 0 else 0
-            
-            # Head Pose (Tilt/Rotation proxy)
-            face_width = get_dist(234, 454)
-            
+            def dist(p1_idx, p2_idx):
+                return np.sqrt((pts[p1_idx][0] - pts[p2_idx][0])**2 + (pts[p1_idx][1] - pts[p2_idx][1])**2)
+
+            faceH = dist(10, 152) + 1e-6
+            faceW = dist(234, 454) + 1e-6
+            iod   = dist(33, 263) + 1e-6
+
+            earL = (dist(159, 145) + dist(158, 153)) / (2 * dist(33, 133) + 1e-6)
+            earR = (dist(386, 374) + dist(385, 380)) / (2 * dist(362, 263) + 1e-6)
+            avgEAR = (earL + earR) / 2
+
             geom_features = [
-                avg_ear, brow_dist, brow_lowering, mouth_width, lip_height, mar, face_width,
-                landmarks[1].z, # Nose depth (tells us if they lean in)
-                get_dist(10, 152), # Face length
-                get_dist(10, 1),   # Upper face
-                get_dist(1, 152)   # Lower face
+                earL,
+                earR,
+                avgEAR,
+                0.0,                                                    # blink_velocity
+                dist(55, 159) / faceH,                             # brow_descent_left
+                dist(285, 386) / faceH,                            # brow_descent_right
+                abs(dist(55, 159) - dist(285, 386)) / faceH,    # brow_asymmetry
+                dist(13, 14) / (dist(61, 291) + 1e-6),        # lip_compression
+                dist(4, 152) / iod,                                # jaw_displacement
+                (dist(61, 4) + dist(291, 4)) / (2 * faceH),   # mouth_corner_pull
+                dist(10, 151) / faceH,                             # forehead_tension
+                faceH / iod,                                            # face_height_norm
+                0.0,                                                    # head_tilt
+                0.0,                                                    # temporal_x_var
+                0.0,                                                    # temporal_y_var
+                avgEAR,                                                 # eye_openness_ratio
+                0.9,                                                    # landmark_confidence
+                dist(4, 50) / faceH,                               # nose_wrinkle
             ]
+
+            features = np.array(geom_features)
             
-            # 2. Add some robust histogram data from the face center
             # Find bounding box from landmarks
             x_coords = [p.x for p in landmarks]
             y_coords = [p.y for p in landmarks]
             x, y = int(min(x_coords) * w_img), int(min(y_coords) * h_img)
             w, h = int((max(x_coords) - min(x_coords)) * w_img), int((max(y_coords) - min(y_coords)) * h_img)
-            
-            face_roi = cv2.cvtColor(img[max(0,y):y+h, max(0,x):x+w], cv2.COLOR_BGR2GRAY)
-            if face_roi.size > 0:
-                face_roi = cv2.resize(face_roi, (50, 50))
-                hist = cv2.calcHist([face_roi], [0], None, [16], [0, 256]).flatten() / face_roi.size
-                geom_features.extend(hist)
-            else:
-                geom_features.extend([0]*16)
 
-            # Pad to 84 features for model compatibility
-            features = np.array(geom_features)
-            if len(features) < 84:
-                features = np.pad(features, (0, 84 - len(features)), 'constant')
-            
-            return features[:84], (x, y, w, h)
+            return features, (x, y, w, h)
             
         except Exception as e:
             print(f"Error extracting facial features: {e}")
-            return np.zeros(84), None
+            return np.zeros(18), None
 
     def extract_voice_features(self, audio_path):
-        """Extract 140 audio features from a WAV file using librosa."""
+        """Extract 12 audio features from a WAV file using voice_worker logic."""
         try:
-            # Fix: duration=None to read full temp file (which is specifically cut to buffer length)
-            y, sr = librosa.load(audio_path, duration=None)
-            
-            # Simple Silence Removal / Noise Gate
-            if len(y) == 0 or np.max(np.abs(y)) < 0.005: # Silence threshold
-                return np.zeros(140)
-
-            features = []
-            mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
-            features.extend(np.mean(mfccs, axis=1))
-            features.extend(np.std(mfccs, axis=1))
-            spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-            spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)[0]
-            spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)[0]
-            features.extend([
-                np.mean(spectral_centroids), np.std(spectral_centroids), np.median(spectral_centroids), np.max(spectral_centroids), np.min(spectral_centroids),
-                np.mean(spectral_rolloff), np.std(spectral_rolloff), np.median(spectral_rolloff), np.max(spectral_rolloff), np.min(spectral_rolloff),
-                np.mean(spectral_bandwidth), np.std(spectral_bandwidth), np.median(spectral_bandwidth), np.max(spectral_bandwidth), np.min(spectral_bandwidth)
-            ])
-            zcr = librosa.feature.zero_crossing_rate(y)[0]
-            features.extend([np.mean(zcr), np.std(zcr), np.median(zcr), np.max(zcr), np.min(zcr)])
-            chroma = librosa.feature.chroma_stft(y=y, sr=sr)
-            features.extend(np.mean(chroma, axis=1))
-            features.extend(np.std(chroma, axis=1))
-            tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
-            if np.ndim(tempo) > 0: tempo = tempo[0]
-            features.extend([tempo, len(beats), np.std(np.diff(beats)) if len(beats) > 1 else 0, np.mean(np.diff(beats)) if len(beats) > 1 else 0, np.var(y)])
-            rms = librosa.feature.rms(y=y)[0]
-            features.extend([np.mean(rms), np.std(rms), np.median(rms), np.max(rms), np.min(rms), np.percentile(rms, 25), np.percentile(rms, 75), np.var(rms), np.max(rms) - np.min(rms), np.mean(np.abs(np.diff(rms)))])
-            mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=8)
-            for i in range(8): features.extend([np.mean(mel_spec[i]), np.std(mel_spec[i])])
-            contrast = librosa.feature.spectral_contrast(y=y, sr=sr, n_bands=5)
-            features.extend(np.mean(contrast, axis=1))
-            features.extend(np.std(contrast, axis=1))
-            features = np.array(features[:140])
-            if len(features) < 140: features = np.pad(features, (0, 140 - len(features)), 'constant')
-            return features
+            with open(audio_path, 'rb') as f:
+                audio_bytes = f.read()
+            from voice_worker import extract_voice_stress_indicators
+            res = extract_voice_stress_indicators(audio_bytes)
+            if res is not None:
+                return res['features']
+            return None
         except Exception as e:
             print(f"Voice feature extraction error: {e}")
-            return np.zeros(140)
+            return None
 
     def extract_physiological_features(self, eeg_data=None, gsr_data=None):
-        features = []
-        if eeg_data is not None and len(eeg_data) > 0:
-            features.extend([np.mean(eeg_data), np.std(eeg_data), np.median(eeg_data), np.max(eeg_data), np.min(eeg_data), np.var(eeg_data), np.percentile(eeg_data, 25), np.percentile(eeg_data, 75), np.max(eeg_data) - np.min(eeg_data), np.mean(np.abs(np.diff(eeg_data)))])
-            while len(features) < 66: features.append(0)
-        else: features.extend([0] * 66)
-        
-        if gsr_data is not None and len(gsr_data) > 0:
-            gsr_features = [np.mean(gsr_data), np.std(gsr_data), np.median(gsr_data), np.max(gsr_data), np.min(gsr_data), np.var(gsr_data), np.percentile(gsr_data, 25), np.percentile(gsr_data, 75), np.max(gsr_data) - np.min(gsr_data), np.mean(np.abs(np.diff(gsr_data)))]
-            features.extend(gsr_features)
-            while len(features) < 132: features.append(0)
-        else: 
-            features.extend([0] * 66)
-        return np.array(features[:132])
+        # Delegate to the module-level function for 51 features
+        return extract_physiological_features(eeg_data, gsr_data)
 
     def predict(self, facial_features=None, voice_features=None, phys_features=None, temp_image_path=None, sensitivity=0.5):
         if not self.is_trained: return {'error': 'Models not loaded'}
@@ -312,6 +270,8 @@ class MultimodalStressDetector:
         if facial_features is not None and self.facial_model:
             try:
                 ff = np.array(facial_features).reshape(1, -1)
+                if self.facial_scaler:
+                    ff = self.facial_scaler.transform(ff)
                 f_prob = self.facial_model.predict_proba(ff)[0][1]
                 preds['facial'] = f_prob
                 
@@ -448,42 +408,12 @@ def extract_gsr_features(gsr_data, fs=4):
     
     return feats
 
-def extract_physiological_features(eeg_data=None, gsr_data=None, pad_to_132=True):
+def extract_physiological_features(eeg_data=None, gsr_data=None):
     import numpy as np
-
-    if pad_to_132:
-        features = []
-        if eeg_data is not None and len(eeg_data) > 0:
-            eeg_arr = np.array(eeg_data)
-            features.extend([
-                np.mean(eeg_arr), np.std(eeg_arr), np.median(eeg_arr), np.max(eeg_arr), np.min(eeg_arr),
-                np.var(eeg_arr), np.percentile(eeg_arr, 25), np.percentile(eeg_arr, 75),
-                np.max(eeg_arr) - np.min(eeg_arr), np.mean(np.abs(np.diff(eeg_arr)))
-            ])
-            while len(features) < 66:
-                features.append(0.0)
-        else:
-            features.extend([0.0] * 66)
-
-        if gsr_data is not None and len(gsr_data) > 0:
-            gsr_arr = np.array(gsr_data)
-            gsr_features = [
-                np.mean(gsr_arr), np.std(gsr_arr), np.median(gsr_arr), np.max(gsr_arr), np.min(gsr_arr),
-                np.var(gsr_arr), np.percentile(gsr_arr, 25), np.percentile(gsr_arr, 75),
-                np.max(gsr_arr) - np.min(gsr_arr), np.mean(np.abs(np.diff(gsr_arr)))
-            ]
-            features.extend(gsr_features)
-            while len(features) < 132:
-                features.append(0.0)
-        else:
-            features.extend([0.0] * 66)
-
-        return np.array(features[:132])
-    else:
-        # Standard 42 EEG + 9 GSR features (total 51)
-        eeg_feats = extract_eeg_features(eeg_data)
-        gsr_feats = extract_gsr_features(gsr_data)
-        return np.concatenate([eeg_feats, gsr_feats])
+    # Standard 42 EEG + 9 GSR features (total 51)
+    eeg_feats = extract_eeg_features(eeg_data)
+    gsr_feats = extract_gsr_features(gsr_data)
+    return np.concatenate([eeg_feats, gsr_feats])
 
 def fuse_predictions(probs, confs, fusion_mode='reliability'):
     active_modes = list(probs.keys())

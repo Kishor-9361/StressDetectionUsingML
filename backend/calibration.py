@@ -5,6 +5,7 @@ before they reach the StandardScaler and classifier.
 """
 
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 from collections import deque
 import threading
 import time
@@ -28,12 +29,63 @@ class UserCalibration:
         self.jaw_baseline  = None   # personal chin-nose/IOD ratio at rest
         self.brow_baseline = None   # personal resting brow descent
 
+        # Session Scalers
+        self.voice_session_scaler = None
+        self.face_session_scaler  = None
+        self._voice_baseline_matrix = []  # rows of 12-dim feature vectors
+        self._face_baseline_matrix  = []  # rows of 18-dim indicator vectors
+
         # Meta
         self.is_complete   = False
         self.phase         = 'not_started'
         self.samples_voice = []
         self.samples_face  = []
         self._lock         = threading.Lock()
+
+    def add_voice_feature_vector(self, feature_vec: np.ndarray):
+        """Call this during Phase 2 calibration with raw 12-dim features."""
+        with self._lock:
+            if feature_vec is not None and len(feature_vec) == 12:
+                self._voice_baseline_matrix.append(feature_vec.copy())
+
+    def add_face_feature_vector(self, feature_vec: np.ndarray):
+        """Call this during Phase 3 calibration with raw 18-dim features."""
+        with self._lock:
+            if feature_vec is not None and len(feature_vec) == 18:
+                self._face_baseline_matrix.append(feature_vec.copy())
+
+    def build_session_scalers(self):
+        """Fit session StandardScaler on the user's own calm baseline data."""
+        with self._lock:
+            if len(self._voice_baseline_matrix) >= 8:
+                X_voice = np.array(self._voice_baseline_matrix)
+                self.voice_session_scaler = StandardScaler()
+                self.voice_session_scaler.fit(X_voice)
+
+            if len(self._face_baseline_matrix) >= 12:
+                X_face = np.array(self._face_baseline_matrix)
+                self.face_session_scaler = StandardScaler()
+                self.face_session_scaler.fit(X_face)
+
+            self.is_complete = (
+                self.voice_session_scaler is not None and
+                self.face_session_scaler  is not None
+            )
+            return self.is_complete
+
+    def scale_voice_features(self, feature_vec: np.ndarray) -> np.ndarray:
+        """Use session scaler to normalize voice features."""
+        with self._lock:
+            if self.voice_session_scaler is not None:
+                return self.voice_session_scaler.transform(feature_vec.reshape(1, -1))
+            return None
+
+    def scale_face_features(self, feature_vec: np.ndarray) -> np.ndarray:
+        """Use session scaler to normalize face features."""
+        with self._lock:
+            if self.face_session_scaler is not None:
+                return self.face_session_scaler.transform(feature_vec.reshape(1, -1))
+            return None
 
     def add_voice_sample(self, indicators: dict):
         with self._lock:

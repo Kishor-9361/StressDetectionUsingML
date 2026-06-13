@@ -1,10 +1,23 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Dashboard from "./pages/Dashboard";
 
 function App() {
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("stress-theme") || "cyber";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("stress-theme", theme);
+    document.body.className = `theme-${theme}`;
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "cyber" ? "earthy" : "cyber"));
+  };
+
   return (
-    <div className="App">
-      <Dashboard />
+    <div className={`App theme-${theme}`}>
+      <Dashboard theme={theme} toggleTheme={toggleTheme} />
     </div>
   );
 }

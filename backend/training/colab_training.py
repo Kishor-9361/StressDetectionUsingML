@@ -3,6 +3,9 @@ Google Colab Multimodal Stress Detection Expert Training Script.
 This script is self-contained. Copy-paste it into a Google Colab notebook cell
 or run it directly in Colab after mounting Google Drive.
 
+IMPORTANT: Ensure you run this first in Colab to install dependencies:
+!pip install mediapipe opencv-python librosa imbalanced-learn scikit-learn pandas numpy
+
 Expected Drive Directory Structure:
 /content/drive/MyDrive/Multimodal_stress_Detection/
   ├── facesData/
@@ -36,33 +39,42 @@ from sklearn.model_selection import train_test_split, cross_val_score, Stratifie
 from sklearn.metrics import classification_report, confusion_matrix
 from imblearn.over_sampling import SMOTE
 
-# Check if running in Google Colab environment by checking the directory path
-# We assume Google Drive has already been mounted by the user in a previous cell.
+# Check if running in Google Colab environment
 if os.path.exists('/content/drive'):
     print("Google Drive mount detected. Using Colab paths...")
     BASE_DRIVE_DIR = '/content/drive/MyDrive/Multimodal_stress_Detection'
+    STRESSID_ROOT = os.path.join(BASE_DRIVE_DIR, 'StressID', 'StressID Dataset')
 else:
     print("Google Drive mount not detected. Running in local environment...")
-    BASE_DRIVE_DIR = r'f:\Multimodal_stress_Detection'
+    # Map to local repo root
+    BASE_DRIVE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    STRESSID_ROOT = os.path.join(BASE_DRIVE_DIR, 'StressID Dataset')
 
 # Configure paths based on BASE_DRIVE_DIR
 FACES_ROOT = os.path.join(BASE_DRIVE_DIR, 'facesData')
-STRESSID_ROOT = os.path.join(BASE_DRIVE_DIR, 'StressID', 'StressID Dataset')
 STRESSID_AUDIO = os.path.join(STRESSID_ROOT, 'Audio')
-OUTPUT_DIR = os.path.join(BASE_DRIVE_DIR, 'expert_models')
 
 # Setup Outputs
+OUTPUT_DIR = os.path.join(BASE_DRIVE_DIR, 'backend', 'expert_models')
+DATASET_OUT_DIR = os.path.join(BASE_DRIVE_DIR, 'dataset_extracted')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-FACE_TRAIN_CSV = os.path.join(BASE_DRIVE_DIR, 'face_indicators_train.csv')
-FACE_TEST_CSV  = os.path.join(BASE_DRIVE_DIR, 'face_indicators_test.csv')
-FACE_STRESSID_CSV = os.path.join(BASE_DRIVE_DIR, 'face_indicators_stressid.csv')
-VOICE_STRESSID_CSV = os.path.join(BASE_DRIVE_DIR, 'voice_indicators_stressid.csv')
+os.makedirs(DATASET_OUT_DIR, exist_ok=True)
+
+FACE_TRAIN_CSV = os.path.join(BASE_DRIVE_DIR, 'backend', 'training', 'face_indicators_train.csv')
+FACE_TEST_CSV  = os.path.join(BASE_DRIVE_DIR, 'backend', 'training', 'face_indicators_test.csv')
+
+os.makedirs(os.path.dirname(FACE_TRAIN_CSV), exist_ok=True)
+
+FACE_STRESSID_CSV = os.path.join(DATASET_OUT_DIR, 'face_indicators_stressid.csv')
+VOICE_STRESSID_CSV = os.path.join(DATASET_OUT_DIR, 'voice_indicators_stressid.csv')
 
 FACE_MODEL_PATH = os.path.join(OUTPUT_DIR, 'face_expert_lightweight.pkl')
 FACE_SCALER_PATH = os.path.join(OUTPUT_DIR, 'face_scaler_lightweight.pkl')
 
 VOICE_MODEL_PATH = os.path.join(OUTPUT_DIR, 'voice_expert_lightweight.pkl')
 VOICE_SCALER_PATH = os.path.join(OUTPUT_DIR, 'voice_scaler_lightweight.pkl')
+
+FORCE_EXTRACTION = True  # Set to True to overwrite existing CSVs and Models
 
 # -----------------------------------------------------------------------------
 # 1. STANDALONE FEATURE EXTRACTORS
@@ -77,7 +89,7 @@ try:
     import mediapipe as mp
     # Check if we can use legacy solutions
     try:
-        import mediapipe.solutions.face_mesh as mp_face_mesh
+        mp_face_mesh = mp.solutions.face_mesh
         USE_LEGACY_MEDIAPIPE = True
         MEDIAPIPE_AVAILABLE = True
         print("Using Legacy MediaPipe solutions API.")
@@ -120,7 +132,7 @@ class FaceMeshWrapper:
             )
             self.detector = vision.FaceLandmarker.create_from_options(options)
         else:
-            import mediapipe.solutions.face_mesh as mp_face_mesh
+            mp_face_mesh = mp.solutions.face_mesh
             self.fm = mp_face_mesh.FaceMesh(
                 static_image_mode=self.static_mode,
                 max_num_faces=1,
@@ -402,7 +414,7 @@ def run_face_extraction():
         return False
 
     def process_split(split_name, output_csv):
-        if os.path.exists(output_csv):
+        if os.path.exists(output_csv) and not FORCE_EXTRACTION:
             print(f"Cache found for Face {split_name} split: {output_csv}. Skipping extraction...")
             return True
             
@@ -480,7 +492,7 @@ def run_face_extraction_stressid_videos():
         return False
         
     output_csv = FACE_STRESSID_CSV
-    if os.path.exists(output_csv):
+    if os.path.exists(output_csv) and not FORCE_EXTRACTION:
         print(f"Cache found for StressID Face features: {output_csv}. Skipping extraction...")
         return True
         
@@ -674,7 +686,7 @@ def train_voice_expert():
     ]
 
     # Check for cached voice features CSV in Google Drive
-    if os.path.exists(VOICE_STRESSID_CSV):
+    if os.path.exists(VOICE_STRESSID_CSV) and not FORCE_EXTRACTION:
         print(f"Cache found for StressID Voice features: {VOICE_STRESSID_CSV}. Loading cached data...")
         df = pd.read_csv(VOICE_STRESSID_CSV)
     else:
@@ -818,7 +830,7 @@ if __name__ == '__main__':
     
     # Check if face expert models already exist in Drive
     face_model_exists = os.path.exists(FACE_MODEL_PATH) and os.path.exists(FACE_SCALER_PATH)
-    if face_model_exists:
+    if face_model_exists and not FORCE_EXTRACTION:
         print("\n>>> Face expert model and scaler already exist in Google Drive. Skipping face extraction and training.")
     else:
         # 1. Run face landmark extraction and save CSV
@@ -835,7 +847,7 @@ if __name__ == '__main__':
             
     # Check if voice expert models already exist in Drive
     voice_model_exists = os.path.exists(VOICE_MODEL_PATH) and os.path.exists(VOICE_SCALER_PATH)
-    if voice_model_exists:
+    if voice_model_exists and not FORCE_EXTRACTION:
         print("\n>>> Voice expert model and scaler already exist in Google Drive. Skipping voice extraction and training.")
     else:
         # 3. Extract and train voice expert model

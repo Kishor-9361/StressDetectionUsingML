@@ -290,17 +290,17 @@ export default function FaceStream({ onResult, onIndicatorsUpdate, active, calib
   }, [active, libsReady, handleResults]);
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block', border: '1px solid rgba(0, 242, 255, 0.25)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 15px rgba(0, 242, 255, 0.15)' }}>
-      <video ref={videoRef} style={{ width: 320, height: 240, background: '#050510', display: 'block', transform: 'scaleX(-1)' }} playsInline />
+    <div style={{ position: 'relative', display: 'inline-block', border: 'var(--glass-border)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--glass-shadow)' }}>
+      <video ref={videoRef} style={{ width: 320, height: 240, background: 'var(--chat-bg)', display: 'block', transform: 'scaleX(-1)' }} playsInline />
       {active && (
-        <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(5,5,16,0.85)',
-                       color: '#00f2ff', borderRadius: 6, padding: '3px 10px',
-                       fontSize: '0.75rem', fontFamily: 'monospace', border: '1px solid rgba(0, 242, 255, 0.25)' }}>
+        <div style={{ position: 'absolute', top: 8, right: 8, background: 'var(--card-bg)',
+                       color: 'var(--primary-color)', borderRadius: 6, padding: '3px 10px',
+                       fontSize: '0.75rem', fontFamily: 'monospace', border: 'var(--glass-border)' }}>
           {fps} fps · Face (WebGL)
         </div>
       )}
       {!active && (
-        <div style={{ position: 'absolute', top: 0, left: 0, width: 320, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(5,5,16,0.9)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: 320, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
           <span>Camera Standby</span>
         </div>
       )}

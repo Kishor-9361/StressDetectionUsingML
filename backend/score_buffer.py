@@ -8,15 +8,23 @@ class ScoreBuffer:
     Scores older than STALE_THRESHOLD_S are excluded from fusion.
     """
     STALE_THRESHOLD_S = 15  # seconds before a score is considered stale
+    EMA_ALPHA = 0.3  # weight given to new reading vs history
 
     def __init__(self):
         self._lock  = threading.Lock()
-        self._store = {}  # modality -> {score, indicators, timestamp}
+        self._store = {}  # modality -> {score, ema_score, indicators, timestamp}
+        self._ema   = {}  # modality -> current EMA state
 
     def write(self, modality: str, score: float, indicators: dict = None):
         with self._lock:
+            # Compute EMA
+            prev_ema = self._ema.get(modality, score)
+            new_ema  = self.EMA_ALPHA * score + (1 - self.EMA_ALPHA) * prev_ema
+            self._ema[modality] = new_ema
+
             self._store[modality] = {
                 'score':      score,
+                'ema_score':  new_ema,
                 'indicators': indicators or {},
                 'timestamp':  time.time(),
             }
@@ -42,8 +50,10 @@ class ScoreBuffer:
         with self._lock:
             if modality:
                 self._store.pop(modality, None)
+                self._ema.pop(modality, None)
             else:
                 self._store.clear()
+                self._ema.clear()
 
 # Singleton instance shared across all Flask routes
 score_buffer = ScoreBuffer()

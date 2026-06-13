@@ -28,6 +28,28 @@ def _extract_period_with_interpolation(ac, min_lag, max_lag):
             delta = np.clip(delta, -0.5, 0.5)
             return float(km) + delta, float(y2)
     return float(km), float(ac[km])
+def extract_f0_yin(y, sr, f0_min=75, f0_max=400, frame_len=512, hop_len=160):
+    """
+    YIN algorithm for F0 extraction.
+    Faster than pyin, more accurate than autocorrelation.
+    """
+    try:
+        f0_yin = librosa.yin(
+            y,
+            fmin=f0_min,
+            fmax=f0_max,
+            sr=sr,
+            frame_length=frame_len,
+            hop_length=hop_len,
+            trough_threshold=0.1
+        )
+        voiced_flag = (f0_yin >= f0_min) & (f0_yin <= f0_max)
+        f0_clean = f0_yin.copy()
+        f0_clean[~voiced_flag] = np.nan
+        return f0_clean, voiced_flag
+    except Exception:
+        return np.array([np.nan]), np.array([False])
+
 def extract_voice_stress_indicators(audio_bytes, sr_target=16000, f0_min=75, f0_max=400):
     """
     Extract 12 acoustic stress biomarkers from a raw audio chunk.
@@ -59,86 +81,49 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000, f0_min=75, f0_
             print(f"Error loading audio: {e_inner}")
             return None
 
-    if y is None or len(y) < sr_target * 0.5:  # less than 0.5 seconds — skip
+    if y is None or len(y) < sr_target * 0.5 or np.max(np.abs(y)) < 0.005:
         return None
 
-    # Fix 4: Ensure loaded audio is normalized to float [-1.0, 1.0] and clamped
+    # Ensure loaded audio is normalized to float [-1.0, 1.0] and clamped
     if y.dtype != np.float32 and y.dtype != np.float64:
         y = y.astype(np.float32) / 32768.0
     y = np.clip(y, -1.0, 1.0)
 
     indicators = {}
 
-    # Fast autocorrelation-based F0, Jitter, Shimmer, and Voiced Fraction extraction
-    # This avoids the slow librosa.pyin call, dropping execution time from 4.4s to <10ms.
     frame_len = int(sr * 0.025)  # 25ms frames
     hop_len   = int(sr * 0.010)  # 10ms hop
     
     try:
-        frames = librosa.util.frame(y, frame_length=frame_len, hop_length=hop_len)
-        periods = []
-        amplitudes = []
-        f0_voiced = []
-        voiced_amplitudes = []
+        f0_track, voiced_flag = extract_f0_yin(y, sr, f0_min, f0_max, 512, hop_len)
+        f0_voiced = f0_track[~np.isnan(f0_track)]
         
-        for frame in frames.T:
-            rms_val = np.sqrt(np.mean(frame ** 2))
-            amplitudes.append(rms_val)
-            
-            ac = np.correlate(frame, frame, mode='full')[frame_len - 1:]
-            ac = ac / (ac[0] + EPS)
-            # Fix 1: Restrict frequency bounds dynamically
-            min_lag = int(sr / f0_max)
-            max_lag = int(sr / f0_min)
-            
-            refined_period, peak_corr = _extract_period_with_interpolation(ac, min_lag, max_lag)
-            periods.append(refined_period)
-            
-            # Voice detection criteria: correlation strength > 0.45 and energy > 0.005
-            if peak_corr > 0.45 and rms_val > 0.005:
-                f_hz = sr / refined_period
-                if f0_min <= f_hz <= f0_max:
-                    f0_voiced.append(f_hz)
-                    voiced_amplitudes.append(rms_val)
-                    
-        periods = np.array(periods, dtype=float)
-        amplitudes = np.array(amplitudes, dtype=float)
+        indicators['f0_mean']  = float(np.mean(f0_voiced)) if len(f0_voiced) > 0 else 0.0
+        indicators['f0_std']   = float(np.std(f0_voiced))  if len(f0_voiced) > 0 else 0.0
+        indicators['f0_range'] = float(np.ptp(f0_voiced))  if len(f0_voiced) > 0 else 0.0
         
-        # 1-3: F0 (fundamental frequency / pitch)
-        indicators['f0_mean']  = float(np.median(f0_voiced)) if len(f0_voiced) > 0 else 0.0
-        indicators['f0_std']   = float(np.std(f0_voiced))    if len(f0_voiced) > 0 else 0.0
-        indicators['f0_range'] = float(np.ptp(f0_voiced))    if len(f0_voiced) > 0 else 0.0
-        
-        # Fix 2: Jitter and Shimmer calculations derived from F0 track / voiced frames
-        f0_voiced_arr = np.array(f0_voiced)
-        voiced_amplitudes = np.array(voiced_amplitudes)
-        
-        if len(f0_voiced_arr) >= 3:
-            # Convert F0 (Hz) to periods (samples)
-            periods_from_f0 = sr / (f0_voiced_arr + 1e-10)
-
-            # Jitter = mean absolute period deviation / mean period (RAP)
-            period_diffs = np.abs(np.diff(periods_from_f0))
-            mean_period  = np.mean(periods_from_f0)
-            jitter_raw   = float(np.mean(period_diffs) / (mean_period + 1e-10))
-            jitter_pct   = jitter_raw * 100
-            
-            indicators['jitter_percent'] = float(np.clip(jitter_pct, 0.0, 5.0))
-            indicators['jitter_reliable'] = bool(jitter_pct < 3.0)
-            
-            # Shimmer: amplitude variation between consecutive voiced frames
-            if len(voiced_amplitudes) >= 3:
-                shimmer_raw = float(np.mean(np.abs(np.diff(voiced_amplitudes))) / (np.mean(voiced_amplitudes) + 1e-10))
-                indicators['shimmer_db'] = float(np.clip(shimmer_raw * 20, 0.0, 3.0))
-            else:
-                indicators['shimmer_db'] = 0.0
+        if len(f0_voiced) >= 3:
+            periods = sr / (f0_voiced + 1e-10)
+            period_diffs = np.abs(np.diff(periods))
+            jitter_rap = float(np.mean(period_diffs) / (np.mean(periods) + 1e-10)) * 100
+            indicators['jitter_percent']  = float(np.clip(jitter_rap, 0.0, 5.0))
+            indicators['jitter_reliable'] = bool(jitter_rap < 3.0)
         else:
-            indicators['jitter_percent'] = 0.0
+            indicators['jitter_percent']  = 0.0
             indicators['jitter_reliable'] = False
-            indicators['shimmer_db'] = 0.0
+            
+        # Shimmer: amplitude variation between consecutive voiced frames
+        rms_all = librosa.feature.rms(y=y, frame_length=frame_len, hop_length=hop_len)[0]
+        voiced_rms = rms_all[:len(voiced_flag)][voiced_flag]
+        voiced_rms = voiced_rms[voiced_rms > 0.005]
         
-        # 12: Voiced fraction
-        voiced_frac = float(len(f0_voiced) / len(frames)) if len(frames) > 0 else 0.5
+        if len(voiced_rms) >= 3:
+            shimmer_raw = float(np.mean(np.abs(np.diff(voiced_rms))) / (np.mean(voiced_rms) + 1e-10))
+            indicators['shimmer_db'] = float(np.clip(shimmer_raw * 20, 0.0, 3.0))
+        else:
+            indicators['shimmer_db'] = 0.0
+            
+        voiced_frac = float(np.sum(voiced_flag) / len(voiced_flag)) if len(voiced_flag) > 0 else 0.5
         indicators['voiced_fraction'] = voiced_frac
         
     except Exception as e:

@@ -4,14 +4,14 @@ import WaveformRecorder from './WaveformRecorder';
 import CalibrationWizard from './CalibrationWizard';
 
 const LEVEL_COLOR = { 
-  Low: '#00f2ff',       // Cyan glow
+  Low: 'var(--primary-color)',       // Dynamic theme primary color
   Moderate: '#FF9800',  // Orange
   High: '#F44336'       // Red
 };
 
 function IndicatorBar({ label, value, scale = 1.0, format, extra, valueColor }) {
   const percent = Math.min(100, Math.max(0, (value / scale) * 100));
-  const barColor = valueColor || (percent > 75 ? '#F44336' : percent > 40 ? '#FF9800' : '#00f2ff');
+  const barColor = valueColor || (percent > 75 ? '#F44336' : percent > 40 ? '#FF9800' : 'var(--primary-color)');
   
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -22,7 +22,7 @@ function IndicatorBar({ label, value, scale = 1.0, format, extra, valueColor }) 
         </div>
         <span style={{ fontWeight: 'bold', fontFamily: 'monospace', color: barColor }}>{format(value)}</span>
       </div>
-      <div style={{ width: '100%', height: 6, background: 'rgba(255, 255, 255, 0.05)', borderRadius: 3, overflow: 'hidden' }}>
+      <div style={{ width: '100%', height: 6, background: 'var(--bar-bg)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ 
           width: `${percent}%`, 
           height: '100%', 
@@ -38,48 +38,48 @@ function IndicatorBar({ label, value, scale = 1.0, format, extra, valueColor }) 
 const faceParamDetails = {
   jaw_displacement: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Distance between the nose tip and the chin, normalized by eye distance.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Measured using facial landmarks 4 (nose tip) and 152 (chin) normalized by 33 & 263 (eyes).<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Distance between the nose tip and the chin, normalized by eye distance.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Measured using facial landmarks 4 (nose tip) and 152 (chin) normalized by 33 & 263 (eyes).<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Open and close your mouth, or speak. You will see the Jaw Displacement bar rise and fall.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress often causes an involuntary clenched jaw (reduced displacement) or jaw drops under sudden shock.
     </div>
   ),
   jaw_width: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Width of the lower jaw, detecting masseter muscle contraction.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Horizontal distance between lower jaw landmarks 172 and 397 normalized by eye distance.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Width of the lower jaw, detecting masseter muscle contraction.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Horizontal distance between lower jaw landmarks 172 and 397 normalized by eye distance.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Clench your teeth tightly together. You will see the Jaw Width bar increase as the masseter muscles contract.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Teeth-clenching is a primary physical, involuntary reaction to stress, anger, and tension.
     </div>
   ),
   blink_velocity: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> The speed at which you close and open your eyes.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Rate of change of the Eye Aspect Ratio (EAR) across consecutive frames.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> The speed at which you close and open your eyes.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Rate of change of the Eye Aspect Ratio (EAR) across consecutive frames.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Blink rapidly or hard. The Blink Velocity metric will spike.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress increases autonomic nervous system arousal, elevating blink velocity and frequency.
     </div>
   ),
   brow_tension: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Downward contraction and pulling together of the eyebrows.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Distance from eyebrows to eyes normalized by face height.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Downward contraction and pulling together of the eyebrows.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Distance from eyebrows to eyes normalized by face height.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Furrow your brows or frown. You'll see the Brow Tension bar rise.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Furrowing the brow is a universal indicator of concentration, anger, or distress.
     </div>
   ),
   lip_compression: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Squeezing the lips tightly together, making them thin.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Vertical mouth gap divided by horizontal mouth width.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Squeezing the lips tightly together, making them thin.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Vertical mouth gap divided by horizontal mouth width.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Press your lips tightly together into a thin line. Lip Compression bar will rise.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Lip compression is an involuntary subconscious cue for anxiety, holding back speech, or cognitive load.
     </div>
   ),
   head_tilt: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Lateral head tilt angle and movement.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> The angle of the line connecting left and right eyes relative to the horizontal axis.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Lateral head tilt angle and movement.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> The angle of the line connecting left and right eyes relative to the horizontal axis.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Tilt your head to the side. The Head Tilt degrees will increase.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Restlessness, frequent head adjustments, or rigid posture are correlated with discomfort and stress.
     </div>
@@ -89,40 +89,40 @@ const faceParamDetails = {
 const voiceParamDetails = {
   f0_mean: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Fundamental frequency (mean pitch) of your voice.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Autocorrelation of voiced audio frames restricted to calibrated pitch bounds.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Fundamental frequency (mean pitch) of your voice.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Autocorrelation of voiced audio frames restricted to calibrated pitch bounds.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak in a high-pitched voice, then a low-pitched voice. The Pitch Hz value will change.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Tension in laryngeal muscles from stress tightens the vocal cords, raising fundamental pitch.
     </div>
   ),
   jitter_percent: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Micro-instability and cycle-to-cycle frequency variations of vocal vibrations.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Relative Average Perturbation (RAP) of pitch periods between consecutive frames.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Micro-instability and cycle-to-cycle frequency variations of vocal vibrations.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Relative Average Perturbation (RAP) of pitch periods between consecutive frames.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak with a shaky, trembling voice, or whisper. You will see Jitter percent rise.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Physiological stress reduces laryngeal muscle stability, leading to higher jitter.
     </div>
   ),
   shimmer_db: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Cycle-to-cycle variation in the amplitude (loudness) of the vocal fold vibration.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Average decibel amplitude deviation between adjacent voiced frames.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Cycle-to-cycle variation in the amplitude (loudness) of the vocal fold vibration.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Average decibel amplitude deviation between adjacent voiced frames.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak with an unstable, trembling loudness. Shimmer will increase.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress causes irregular vocal fold closure, which makes loudness fluctuate microscopically.
     </div>
   ),
   speaking_rate_proxy: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Speaking rate and breathiness proxy using zero-crossing rate.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Frequency of sign changes in the audio waveform over time.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Speaking rate and breathiness proxy using zero-crossing rate.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Frequency of sign changes in the audio waveform over time.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak extremely fast, or blow air/sigh into the microphone. Speaking Rate bar will rise.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Agitation, panic, or anxiety increases speech rate and shallow breathiness, elevating ZCR.
     </div>
   ),
   voice_intensity: (
     <div>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• What it is:</span> Vocal loudness and energy.<br/>
-      <span style={{ color: '#00f2ff', fontWeight: 'bold' }}>• Calculation:</span> Root-Mean-Square (RMS) energy of the audio chunk relative to calibrated noise threshold.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Vocal loudness and energy.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Root-Mean-Square (RMS) energy of the audio chunk relative to calibrated noise threshold.<br/>
       <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak loudly or shout, then whisper. Voice Intensity bar will scale.<br/>
       <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress triggers fight responses (elevated loudness) or freeze/anxiety responses (muted volume).
     </div>
@@ -352,9 +352,9 @@ export default function RealtimeMonitor() {
           await fetch('http://127.0.0.1:5000/api/calibrate/voice_sample', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: 'default', indicators: data.indicators }),
+            body: JSON.stringify({ user_id: 'default', indicators: data.indicators, features: data.features }),
           });
-          console.log("[Calibration] Posted voice sample indicators.");
+          console.log("[Calibration] Posted voice sample indicators and features.");
         }
       }
       
@@ -391,10 +391,15 @@ export default function RealtimeMonitor() {
       <h3 className="text-center mb-4 neon-text" style={{ fontSize: '1.8rem' }}>🧠 Real-Time Multimodal Monitoring</h3>
       
       {/* Controls & Overall Fused Assessment */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24, borderBottom: '1px solid rgba(0, 242, 255, 0.1)', paddingBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24, borderBottom: 'var(--glass-border)', paddingBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {!active ? (
-            <button className="btn btn-neon" onClick={startMonitoring} style={{ fontSize: '1.05rem', padding: '12px 28px' }}>
+            <button 
+              className="btn btn-neon" 
+              onClick={startMonitoring} 
+              disabled={serverStatus === 'disconnected'}
+              style={{ fontSize: '1.05rem', padding: '12px 28px' }}
+            >
               ▶ Start Session
             </button>
           ) : (
@@ -403,7 +408,7 @@ export default function RealtimeMonitor() {
                 ⏹ Stop Session
               </button>
               {isCalibrated && (
-                <button className="btn" onClick={resetCalibration} style={{ background: 'transparent', border: '1px solid rgba(0,242,255,0.4)', color: '#00f2ff', fontSize: '1.05rem', padding: '12px 24px' }}>
+                <button className="btn" onClick={resetCalibration} style={{ background: 'transparent', border: '1px solid var(--primary-color)', color: 'var(--primary-color)', fontSize: '1.05rem', padding: '12px 24px' }}>
                   🔄 Recalibrate
                 </button>
               )}
@@ -418,25 +423,25 @@ export default function RealtimeMonitor() {
             fontSize: '0.75rem',
             padding: '6px 14px',
             borderRadius: 20,
-            background: 'rgba(10, 15, 30, 0.6)',
+            background: 'var(--accent-light-bg)',
             border: `1px solid ${
-              serverStatus === 'connected' ? 'rgba(0, 242, 255, 0.25)' :
-              serverStatus === 'connecting' ? 'rgba(255, 152, 0, 0.25)' : 'rgba(244, 67, 54, 0.25)'
+              serverStatus === 'connected' ? 'var(--primary-color)' :
+              serverStatus === 'connecting' ? 'rgba(255, 152, 0, 0.35)' : 'rgba(244, 67, 54, 0.35)'
             }`,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
             transition: 'border-color 0.3s ease'
           }}>
             <span style={{
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: serverStatus === 'connected' ? '#00f2ff' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
+              background: serverStatus === 'connected' ? 'var(--primary-color)' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
               display: 'inline-block',
               animation: serverStatus !== 'disconnected' ? 'pulseGlow 1.8s infinite ease-in-out' : 'none',
-              boxShadow: `0 0 8px ${serverStatus === 'connected' ? '#00f2ff' : serverStatus === 'connecting' ? '#FF9800' : '#F44336'}`
+              boxShadow: `0 0 8px ${serverStatus === 'connected' ? 'var(--primary-color)' : serverStatus === 'connecting' ? '#FF9800' : '#F44336'}`
             }} />
             <span style={{
-              color: serverStatus === 'connected' ? '#00f2ff' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
+              color: serverStatus === 'connected' ? 'var(--primary-color)' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
               fontWeight: 700,
               letterSpacing: '0.6px',
               fontFamily: 'monospace'
@@ -451,7 +456,7 @@ export default function RealtimeMonitor() {
             display: 'flex', 
             alignItems: 'center', 
             gap: 16,
-            background: 'rgba(20, 25, 45, 0.8)',
+            background: 'var(--card-bg)',
             padding: '10px 24px',
             borderRadius: 12,
             border: `1.5px solid ${levelColor}`,
@@ -487,26 +492,26 @@ export default function RealtimeMonitor() {
         
         {/* Face Card */}
         <div style={{ 
-          background: 'rgba(10, 15, 30, 0.4)',
+          background: 'var(--card-bg)',
           borderRadius: 16,
           padding: 20,
-          border: '1px solid rgba(0, 242, 255, 0.1)',
-          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+          border: 'var(--glass-border)',
+          boxShadow: 'var(--glass-shadow)',
           display: 'flex',
           flexDirection: 'column',
           gap: 16
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0, 242, 255, 0.1)', paddingBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'var(--glass-border)', paddingBottom: 10 }}>
             <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-color)' }}>📸 Facial Modality</h4>
             {active && !calibrating && (
               <span style={{ 
                 fontWeight: 700, 
-                color: smoothFaceScore === null ? 'var(--text-muted)' : smoothFaceScore > 0.7 ? '#F44336' : smoothFaceScore > 0.4 ? '#FF9800' : '#00f2ff',
+                color: smoothFaceScore === null ? 'var(--text-muted)' : smoothFaceScore > 0.7 ? '#F44336' : smoothFaceScore > 0.4 ? '#FF9800' : 'var(--primary-color)',
                 fontSize: '0.9rem',
                 padding: '4px 10px',
                 borderRadius: 6,
-                background: 'rgba(20, 25, 45, 0.8)',
-                border: `1px solid ${smoothFaceScore === null ? 'rgba(255,255,255,0.1)' : smoothFaceScore > 0.7 ? '#F4433633' : smoothFaceScore > 0.4 ? '#FF980033' : '#00f2ff33'}`
+                background: 'var(--accent-light-bg)',
+                border: smoothFaceScore === null ? '1px solid rgba(120,120,120,0.1)' : smoothFaceScore > 0.7 ? '1px solid #F4433655' : smoothFaceScore > 0.4 ? '1px solid #FF980055' : 'var(--glass-border)'
               }}>
                 {smoothFaceScore === null ? 'No Face Detected' : `Stress: ${Math.round(smoothFaceScore * 100)}%`}
               </span>
@@ -537,7 +542,7 @@ export default function RealtimeMonitor() {
             />
           </div>
 
-          <div style={{ background: 'rgba(5, 5, 16, 0.4)', borderRadius: 10, padding: 14, border: '1px solid rgba(0, 242, 255, 0.08)', flexGrow: 1 }}>
+          <div style={{ background: 'var(--accent-light-bg)', borderRadius: 10, padding: 14, border: 'var(--glass-border)', flexGrow: 1 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12 }}>Live Tracked Facial Patterns</div>
             {active && faceIndicators ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -556,7 +561,7 @@ export default function RealtimeMonitor() {
           </div>
           
           {/* Biomarker Guide Dropdown for Face */}
-          <div style={{ marginTop: 8, borderTop: '1px solid rgba(0, 242, 255, 0.1)', paddingTop: 12 }}>
+          <div style={{ marginTop: 8, borderTop: 'var(--glass-border)', paddingTop: 12 }}>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6, fontWeight: 600 }}>💡 Face Biomarker Guide & Tester</label>
             <select 
               value={selectedFaceParam} 
@@ -564,9 +569,9 @@ export default function RealtimeMonitor() {
               style={{
                 width: '100%',
                 padding: '8px 12px',
-                background: 'rgba(20, 25, 45, 0.8)',
+                background: 'var(--card-bg)',
                 color: 'var(--text-color)',
-                border: '1px solid rgba(0, 242, 255, 0.2)',
+                border: 'var(--glass-border)',
                 borderRadius: 6,
                 fontSize: '0.8rem',
                 outline: 'none',
@@ -586,8 +591,8 @@ export default function RealtimeMonitor() {
             {selectedFaceParam && (
               <div className="fade-in-up" style={{
                 marginTop: 10,
-                background: 'rgba(0, 242, 255, 0.04)',
-                border: '1px solid rgba(0, 242, 255, 0.15)',
+                background: 'var(--accent-light-bg)',
+                border: 'var(--glass-border)',
                 borderRadius: 8,
                 padding: 12,
                 fontSize: '0.75rem',
@@ -603,26 +608,26 @@ export default function RealtimeMonitor() {
 
         {/* Voice Card */}
         <div style={{ 
-          background: 'rgba(10, 15, 30, 0.4)',
+          background: 'var(--card-bg)',
           borderRadius: 16,
           padding: 20,
-          border: '1px solid rgba(0, 242, 255, 0.1)',
-          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+          border: 'var(--glass-border)',
+          boxShadow: 'var(--glass-shadow)',
           display: 'flex',
           flexDirection: 'column',
           gap: 16
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0, 242, 255, 0.1)', paddingBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'var(--glass-border)', paddingBottom: 10 }}>
             <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-color)' }}>🎤 Vocal Modality</h4>
             {active && !calibrating && (
               <span style={{ 
                 fontWeight: 700, 
-                color: smoothVoiceScore === null ? 'var(--text-muted)' : smoothVoiceScore > 0.7 ? '#F44336' : smoothVoiceScore > 0.4 ? '#FF9800' : '#00f2ff',
+                color: smoothVoiceScore === null ? 'var(--text-muted)' : smoothVoiceScore > 0.7 ? '#F44336' : smoothVoiceScore > 0.4 ? '#FF9800' : 'var(--primary-color)',
                 fontSize: '0.9rem',
                 padding: '4px 10px',
                 borderRadius: 6,
-                background: 'rgba(20, 25, 45, 0.8)',
-                border: `1px solid ${smoothVoiceScore === null ? 'rgba(255,255,255,0.1)' : smoothVoiceScore > 0.7 ? '#F4433633' : smoothVoiceScore > 0.4 ? '#FF980033' : '#00f2ff33'}`
+                background: 'var(--accent-light-bg)',
+                border: smoothVoiceScore === null ? '1px solid rgba(120,120,120,0.1)' : smoothVoiceScore > 0.7 ? '1px solid #F4433655' : smoothVoiceScore > 0.4 ? '1px solid #FF980055' : 'var(--glass-border)'
               }}>
                 {smoothVoiceScore === null ? 'Silent / Ambient' : `Stress: ${Math.round(smoothVoiceScore * 100)}%`}
               </span>
@@ -641,7 +646,7 @@ export default function RealtimeMonitor() {
             voiceScore={smoothVoiceScore}
           />
 
-          <div style={{ background: 'rgba(5, 5, 16, 0.4)', borderRadius: 10, padding: 14, border: '1px solid rgba(0, 242, 255, 0.08)', flexGrow: 1 }}>
+          <div style={{ background: 'var(--accent-light-bg)', borderRadius: 10, padding: 14, border: 'var(--glass-border)', flexGrow: 1 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12 }}>Acoustic Stress Biomarkers</div>
             {active && voiceIndicators ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -674,7 +679,7 @@ export default function RealtimeMonitor() {
           </div>
 
           {/* Biomarker Guide Dropdown for Voice */}
-          <div style={{ marginTop: 8, borderTop: '1px solid rgba(0, 242, 255, 0.1)', paddingTop: 12 }}>
+          <div style={{ marginTop: 8, borderTop: 'var(--glass-border)', paddingTop: 12 }}>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6, fontWeight: 600 }}>💡 Voice Biomarker Guide & Tester</label>
             <select 
               value={selectedVoiceParam} 
@@ -682,9 +687,9 @@ export default function RealtimeMonitor() {
               style={{
                 width: '100%',
                 padding: '8px 12px',
-                background: 'rgba(20, 25, 45, 0.8)',
+                background: 'var(--card-bg)',
                 color: 'var(--text-color)',
-                border: '1px solid rgba(0, 242, 255, 0.2)',
+                border: 'var(--glass-border)',
                 borderRadius: 6,
                 fontSize: '0.8rem',
                 outline: 'none',
@@ -703,8 +708,8 @@ export default function RealtimeMonitor() {
             {selectedVoiceParam && (
               <div className="fade-in-up" style={{
                 marginTop: 10,
-                background: 'rgba(0, 242, 255, 0.04)',
-                border: '1px solid rgba(0, 242, 255, 0.15)',
+                background: 'var(--accent-light-bg)',
+                border: 'var(--glass-border)',
                 borderRadius: 8,
                 padding: 12,
                 fontSize: '0.75rem',
@@ -722,13 +727,13 @@ export default function RealtimeMonitor() {
 
       {/* Dynamic Reliability and Weights panel */}
       {active && !calibrating && result && result.status === 'active' && result.weights && (
-        <div style={{ background: 'rgba(10, 12, 22, 0.5)', padding: 16, borderRadius: 12, border: '1px solid rgba(0, 242, 255, 0.08)', marginBottom: 24 }}>
+        <div style={{ background: 'var(--accent-light-bg)', padding: 16, borderRadius: 12, border: 'var(--glass-border)', marginBottom: 24 }}>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>Dynamic Sensor Reliability Weights</div>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
             {Object.entries(result.weights).map(([mode, weight]) => (
-              <div key={mode} style={{ flex: '1 1 150px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 12px', background: 'rgba(20, 25, 45, 0.4)', borderRadius: 8, border: '1px solid rgba(0, 242, 255, 0.05)' }}>
+              <div key={mode} style={{ flex: '1 1 150px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 12px', background: 'var(--card-bg)', borderRadius: 8, border: 'var(--glass-border)' }}>
                 <span style={{ textTransform: 'capitalize', color: 'var(--text-color)' }}>{mode} sensor weight:</span>
-                <span style={{ fontWeight: 700, color: '#00f2ff' }}>{Math.round(weight * 100)}%</span>
+                <span style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{Math.round(weight * 100)}%</span>
               </div>
             ))}
           </div>
@@ -757,11 +762,11 @@ export default function RealtimeMonitor() {
 
         return (
           <div style={{ 
-            background: 'rgba(10, 15, 30, 0.5)', 
+            background: 'var(--card-bg)', 
             padding: 20, 
             borderRadius: 16, 
-            border: '1px solid rgba(0, 242, 255, 0.1)',
-            boxShadow: '0 4px 24px rgba(0, 0, 0, 0.3)',
+            border: 'var(--glass-border)',
+            boxShadow: 'var(--glass-shadow)',
             marginBottom: 24
           }}>
             <div style={{ 
@@ -778,7 +783,7 @@ export default function RealtimeMonitor() {
                 fontFamily: 'monospace', 
                 fontSize: '0.75rem', 
                 color: 'var(--text-muted)',
-                background: 'rgba(255,255,255,0.03)',
+                background: 'var(--accent-light-bg)',
                 padding: '2px 8px',
                 borderRadius: 4
               }}>
@@ -795,21 +800,21 @@ export default function RealtimeMonitor() {
               </defs>
               
               {/* Horizontal Grid lines */}
-              <line x1="45" y1="15" x2="485" y2="15" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+              <line x1="45" y1="15" x2="485" y2="15" stroke="var(--glass-border)" strokeWidth="1" strokeOpacity="0.3" />
               <line x1="45" y1="49.5" x2="485" y2="49.5" stroke="rgba(244,67,54,0.12)" strokeWidth="1" strokeDasharray="4,4" />
               <line x1="45" y1="84" x2="485" y2="84" stroke="rgba(255,152,0,0.12)" strokeWidth="1" strokeDasharray="4,4" />
-              <line x1="45" y1="130" x2="485" y2="130" stroke="rgba(0,242,255,0.15)" strokeWidth="1" />
+              <line x1="45" y1="130" x2="485" y2="130" stroke="var(--glass-border)" strokeWidth="1" />
 
               {/* Y Axis Labels */}
               <text x="36" y="19" fill="#F44336" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">100%</text>
               <text x="36" y="53" fill="rgba(244,67,54,0.7)" fontSize="9px" fontFamily="monospace" textAnchor="end">70%</text>
               <text x="36" y="87.5" fill="rgba(255,152,0,0.7)" fontSize="9px" fontFamily="monospace" textAnchor="end">40%</text>
-              <text x="36" y="133" fill="#00f2ff" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">0%</text>
+              <text x="36" y="133" fill="var(--primary-color)" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">0%</text>
 
               {/* Threshold region labels */}
               <text x="480" y="26" fill="rgba(244,67,54,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">HIGH STRESS</text>
               <text x="480" y="60" fill="rgba(255,152,0,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">MODERATE</text>
-              <text x="480" y="110" fill="rgba(0,242,255,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">CALM</text>
+              <text x="480" y="110" fill="var(--primary-color)" fillOpacity="0.25" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">CALM</text>
 
               {/* Filled Area Chart */}
               {fillPath && <path d={fillPath} fill="url(#trendAreaGradient)" />}

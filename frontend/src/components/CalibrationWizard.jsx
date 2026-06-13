@@ -12,8 +12,8 @@ const PHASES = [
     {
         key:         'voice',
         title:       'Step 2 of 3 — Voice Baseline',
-        instruction: 'Read this aloud in your natural calm voice: "The quick brown fox jumps over the lazy dog. Today is a good day and I feel comfortable."',
-        duration:    30,
+        instruction: 'Read this aloud in your natural calm voice: "Today is a calm day. I am sitting comfortably. The weather is pleasant. I feel relaxed and at ease. My breathing is slow and steady."',
+        duration:    40,
         icon:        '🗣️',
         tip:         'Speak naturally. This calibrates your personal pitch, tone, and speaking rhythm.',
     },
@@ -112,7 +112,7 @@ export default function CalibrationWizard({ userId = 'default', onComplete, sile
         return (
             <div style={{ textAlign: 'center', padding: 40 }}>
                 <div style={{ fontSize: '3rem', marginBottom: 16 }}>✅</div>
-                <h2 style={{ color: '#00f2ff', margin: '0 0 12px', textShadow: '0 0 10px rgba(0, 242, 255, 0.4)' }}>Calibration Complete</h2>
+                <h2 style={{ color: 'var(--primary-color)', margin: '0 0 12px', textShadow: '0 0 10px var(--neon-glow)' }}>Calibration Complete</h2>
                 <p style={{ color: 'var(--text-color)', fontSize: '0.95rem', lineHeight: '1.6', maxWidth: 440, margin: '0 auto 24px' }}>
                     Your stress monitoring is now tuned to your personal baseline and environment,
                     ensuring accurate metrics relative to your own calm state.
@@ -129,23 +129,23 @@ export default function CalibrationWizard({ userId = 'default', onComplete, sile
     }
 
     return (
-        <div style={{ maxWidth: 520, margin: '20px auto', padding: 28, background: 'rgba(10, 15, 30, 0.75)', borderRadius: 16, border: '1px solid rgba(0, 242, 255, 0.15)', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}>
+        <div style={{ maxWidth: 520, margin: '20px auto', padding: 28, background: 'var(--card-bg)', borderRadius: 16, border: 'var(--glass-border)', boxShadow: 'var(--glass-shadow)', backdropFilter: 'blur(8px)' }}>
             {/* Phase indicator */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 28 }}>
                 {PHASES.map((p, i) => (
                     <div key={p.key} style={{
                         flex: 1, height: 4, borderRadius: 2,
-                        background: i < phase ? '#00f2ff' : i === phase && running ? 'linear-gradient(90deg, #00f2ff, rgba(0,242,255,0.2))' : 'rgba(255,255,255,0.1)',
-                        boxShadow: i <= phase && running ? '0 0 8px rgba(0, 242, 255, 0.5)' : 'none',
+                        background: i < phase ? 'var(--primary-color)' : i === phase && running ? 'linear-gradient(90deg, var(--primary-color), var(--accent-light-bg))' : 'var(--bar-bg)',
+                        boxShadow: i <= phase && running ? '0 0 8px var(--neon-glow)' : 'none',
                         transition: 'background 0.3s ease'
                     }} />
                 ))}
             </div>
 
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                <div style={{ fontSize: '3rem', marginBottom: 12, filter: 'drop-shadow(0 0 10px rgba(0, 242, 255, 0.3))' }}>{currentPhase.icon}</div>
+                <div style={{ fontSize: '3rem', marginBottom: 12, filter: 'drop-shadow(0 0 10px var(--neon-glow))' }}>{currentPhase.icon}</div>
                 <h3 style={{ color: 'var(--text-color)', margin: '0 0 12px', fontSize: '1.4rem' }}>{currentPhase.title}</h3>
-                <p style={{ color: '#00f2ff', fontSize: '1.05rem', lineHeight: '1.5', margin: '0 0 16px', fontWeight: 500 }}>
+                <p style={{ color: 'var(--primary-color)', fontSize: '1.05rem', lineHeight: '1.5', margin: '0 0 16px', fontWeight: 500 }}>
                     {currentPhase.instruction}
                 </p>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic', maxWidth: 400, margin: '0 auto' }}>
@@ -157,16 +157,16 @@ export default function CalibrationWizard({ userId = 'default', onComplete, sile
             {running && (
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
                     <svg width={110} height={110} viewBox="0 0 100 100">
-                        <circle cx={50} cy={50} r={42} fill="none" stroke="rgba(255, 255, 255, 0.05)" strokeWidth={6} />
-                        <circle cx={50} cy={50} r={42} fill="none" stroke="#00f2ff" strokeWidth={6}
+                        <circle cx={50} cy={50} r={42} fill="none" stroke="var(--bar-bg)" strokeWidth={6} />
+                        <circle cx={50} cy={50} r={42} fill="none" stroke="var(--primary-color)" strokeWidth={6}
                             strokeDasharray={`${2 * Math.PI * 42}`}
                             strokeDashoffset={`${2 * Math.PI * 42 * (1 - pct / 100)}`}
                             strokeLinecap="round"
                             transform="rotate(-90 50 50)"
-                            style={{ transition: 'stroke-dashoffset 0.1s linear', filter: 'drop-shadow(0 0 6px rgba(0, 242, 255, 0.6))' }}
+                            style={{ transition: 'stroke-dashoffset 0.1s linear', filter: 'drop-shadow(0 0 6px var(--neon-glow))' }}
                         />
-                        <text x={50} y={56} textAnchor="middle" fill="#00f2ff"
-                              fontSize={22} fontWeight="bold" fontFamily="monospace">{countdown}s</text>
+                        <text x={50} y={56} textAnchor="middle" fill="var(--primary-color)"
+                               fontSize={22} fontWeight="bold" fontFamily="monospace">{countdown}s</text>
                     </svg>
                 </div>
             )}

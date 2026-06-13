@@ -179,16 +179,19 @@ export default function WaveformRecorder({ continuous, chunkIntervalMs = 2000, o
     setRecording(false);
     clearCanvas();
   };
-
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#050510';
+    const styles = getComputedStyle(canvas);
+    const bgColor = styles.getPropertyValue('--chat-bg').trim() || '#050510';
+    const gridColor = styles.getPropertyValue('--glass-border').trim() || 'rgba(0, 242, 255, 0.2)';
+    
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     // Draw flat center line
     ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(0, 242, 255, 0.2)';
+    ctx.strokeStyle = gridColor;
     ctx.beginPath();
     ctx.moveTo(0, canvas.height / 2);
     ctx.lineTo(canvas.width, canvas.height / 2);
@@ -210,10 +213,14 @@ export default function WaveformRecorder({ continuous, chunkIntervalMs = 2000, o
 
       analyser.getByteTimeDomainData(dataArray);
 
-      ctx.fillStyle = '#050510';
+      const styles = getComputedStyle(canvas);
+      const bgColor = styles.getPropertyValue('--chat-bg').trim() || '#050510';
+      const themePrimary = styles.getPropertyValue('--primary-color').trim() || '#00f2ff';
+
+      ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      let visualColor = '#00f2ff';
+      let visualColor = themePrimary;
       const currentScore = voiceScoreRef.current;
       if (currentScore !== null) {
         if (currentScore > 0.7) {
@@ -253,22 +260,24 @@ export default function WaveformRecorder({ continuous, chunkIntervalMs = 2000, o
     draw();
   };
 
-  let visualColor = '#00f2ff';
-  if (voiceScore !== null) {
-    if (voiceScore > 0.7) {
-      visualColor = '#F44336';
-    } else if (voiceScore > 0.4) {
-      visualColor = '#FF9800';
-    }
-  }
-  const statusColor = recording ? visualColor : '#a0a0b0';
+  const currentScore = voiceScore;
+  const statusColor = recording 
+    ? (currentScore > 0.7 ? '#F44336' : currentScore > 0.4 ? '#FF9800' : 'var(--primary-color)')
+    : 'var(--text-muted)';
 
   return (
-    <div style={{ border: `1px solid ${statusColor}44`, borderRadius: 12, overflow: 'hidden', padding: 12, background: 'rgba(20, 25, 40, 0.6)', boxShadow: `0 0 15px ${statusColor}11` }}>
+    <div style={{ border: 'var(--glass-border)', borderRadius: 12, overflow: 'hidden', padding: 12, background: 'var(--card-bg)', boxShadow: 'var(--glass-shadow)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>Vocal Audio Monitor</span>
         <span style={{ fontSize: '0.75rem', color: statusColor, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block', boxShadow: recording ? `0 0 8px ${statusColor}` : 'none' }}></span>
+          <span style={{ 
+            width: 8, 
+            height: 8, 
+            borderRadius: '50%', 
+            background: statusColor, 
+            display: 'inline-block', 
+            boxShadow: recording ? `0 0 8px ${statusColor === 'var(--primary-color)' ? 'var(--primary-color)' : statusColor}` : 'none' 
+          }}></span>
           {recording ? 'STREAMING' : 'STANDBY'}
         </span>
       </div>
@@ -276,7 +285,7 @@ export default function WaveformRecorder({ continuous, chunkIntervalMs = 2000, o
         ref={canvasRef}
         width={320}
         height={100}
-        style={{ width: '100%', height: 100, display: 'block', background: '#050510', borderRadius: 8 }}
+        style={{ width: '100%', height: 100, display: 'block', background: 'var(--chat-bg)', borderRadius: 8 }}
       />
     </div>
   );

@@ -97,6 +97,11 @@ class StressStreamProcessor:
             sf.write(temp_path, session['audio'], sample_rate)
             features = self.model.extract_voice_features(temp_path)
             
+            if features is None:
+                try: os.remove(temp_path)
+                except: pass
+                return {'error': 'Silent or invalid audio chunk'}
+                
             result = self.model.predict(voice_features=features, sensitivity=sensitivity)
             
             try: os.remove(temp_path)
