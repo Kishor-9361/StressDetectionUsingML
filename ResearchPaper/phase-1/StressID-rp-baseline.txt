@@ -1,0 +1,3 @@
+https://github.com/robustml-eurecom/stressID
+
+--GitHub repository which contains the data about the baseline calculation methods for the stressID dataset
