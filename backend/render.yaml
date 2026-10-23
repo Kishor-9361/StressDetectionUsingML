@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: stress-detection-backend
+    name: stress-detection
     env: python
     region: oregon
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app
+    buildCommand: sh -c "if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install -r backend/requirements.txt; fi"
+    startCommand: sh -c "if [ -f app.py ]; then exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app; else exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --chdir backend app:app; fi"
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.12

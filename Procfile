@@ -1,1 +1,1 @@
-web: gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app
+web: sh -c "if [ -f app.py ]; then exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:\$PORT app:app; else exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:\$PORT --chdir backend app:app; fi"
