@@ -21,6 +21,8 @@ env/
 .env
 .env.local
 .env.*.local
+.agents/
+render_cli.py
 
 # Node modules
 node_modules/
