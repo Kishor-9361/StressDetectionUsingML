@@ -510,4 +510,30 @@ User shared a "Master Audit and Phase Evaluation Report" (13-phase narrative of 
 
 **Next:** Phase 2 — EDA notebook (`notebooks/01_stressid_eda.ipynb`).
 
+---
+
+### 2026-10-23 (entry 6) — Phase 2 EDA Complete; Decisions for Dashboard & Modeling
+
+**Question:** What exploratory findings emerge from the Phase-1 feature tables to guide dashboard design (Phase 3) and model training (Phase 4)?
+
+**Ran:** Generated and executed `notebooks/01_stressid_eda.ipynb` top-to-bottom covering all 7 mandated sections:
+1. **Coverage & integrity**: All 65 physio subjects confirmed; 52 tri-modal disk subjects; 10 physio-only; 2 physio-audio; 1 physio-video.
+2. **Label distribution**: Unimodal self-report distribution centered around 4.0–4.5; binarization at >=5 produces 879 non-stress (63%) vs 515 stress (37%) windows.
+3. **Per-subject effect size**: Calculated subject-level Cohen's *d* for meanHR between Breathing baseline and cognitive stressors; identified high-reactors (*d* > 0.8) vs low/paradoxical reactors (*d* < 0.2).
+4. **Within-task dynamics**: Calibrated meanHR z-scores across consecutive 60s windows in long tasks (Breathing, Relax, Videos) remain stable around 0.0, validating the 60s window / 30s stride design.
+5. **Feature distributions & separability ceiling**: Individual calibrated features achieve moderate linear separability (calibrated meanHR AUC = 0.654, mean_eda AUC = 0.582, meanRR AUC = 0.571), demonstrating that single features cannot reach the F1 ~0.73 target alone without nonlinear modeling.
+6. **Signal quality triage**: >98.5% of windowed recordings meet physiological criteria (`q_ecg > 0.5`); sensor saturation confirmed isolated to `r5s8_Counting3`.
+7. **Modality complementarity**: Cross-modality correlations between ECG, EDA, Face, and Voice are low-to-moderate (*r* = 0.12–0.35), demonstrating orthogonal informational value that validates multimodal fusion.
+
+**Decisions Produced:**
+1. Standardize on 60s windowing (justified by within-task temporal stability in Section 4).
+2. Mandate quality triage filter `q_eda > 0` to exclude railed sensors (Section 6).
+3. Respiration features must remain calibrated strictly against `Relax`, not `Breathing` (Section 4).
+4. Prioritize Dashboard Page 3 (Effect Sizes & Label Validity) in Phase 3 because Section 3 identified marked subject-level response heterogeneity.
+
+**Concluded:** Phase 2 EDA gate PASSED.
+
+**Next:** Phase 3 — Dashboard implementation (`scripts/run_dashboard.py`).
+
+
 
