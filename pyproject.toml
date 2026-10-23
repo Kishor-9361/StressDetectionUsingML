@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stressres"
+version = "0.1.0"
+description = "Reproducible multimodal stress detection research pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy==1.26.4",
+  "scipy==1.13.1",
+  "pandas==2.2.2",
+  "pyarrow==16.1.0",
+  "neurokit2==0.2.7",
+  "scikit-learn==1.5.0",
+  "librosa==0.10.2",
+  "soundfile==0.12.1",
+  "torch==2.5.1+cu121",
+  "matplotlib==3.9.0",
+  "pyyaml==6.0.1",
+  "pytest==8.2.2",
+  "tqdm==4.66.4",
+  "plotly==6.9.0",
+  "streamlit==1.60.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
