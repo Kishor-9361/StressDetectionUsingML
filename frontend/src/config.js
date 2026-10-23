@@ -1,8 +1,7 @@
 if (!process.env.REACT_APP_API_BASE && process.env.NODE_ENV === 'production') {
   console.warn('REACT_APP_API_BASE is not explicitly set in environment variables! Defaulting to localhost.');
 }
-
-export const API_BASE = process.env.REACT_APP_API_BASE || "http://127.0.0.1:5000";
+export const API_BASE = process.env.REACT_APP_API_BASE || ((typeof window !== 'undefined' && window.location.port === '3000') ? 'http://127.0.0.1:5000' : '');
 
 export const STRESS_LEVELS = {
   Extreme: { label: 'Extreme', color: 'var(--accent-red)' },
