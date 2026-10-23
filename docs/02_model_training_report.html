@@ -269,6 +269,7 @@
         .text-sky-400 { color: #38bdf8; }
         .text-sky-300 { color: #7dd3fc; }
         .text-amber-400 { color: #fbbf24; }
+        .text-amber-300 { color: #fde047; }
         .text-rose-400 { color: #f43f5e; }
 
         .model-section {
@@ -320,62 +321,363 @@
         <header>
             <h1>StressID Model Training & Benchmark Report</h1>
             <p class="text-slate-300 mt-2">
-                Programmatically consolidated results across 15 models (Tier 0 Classical Baselines, Multimodal Views, Tier 1 Sequence Models, and Tier 2 Adversarial GRL). 
+                Programmatically consolidated results across all 15 trained models (Tier 0 Classical Baselines, Multimodal Views, Tier 1 Sequence Models, and Tier 2 Adversarial GRL). 
                 All runs adhere strictly to Subject-Grouped Leave-One-Subject-Out (LOSO) cross-validation with zero hand-typed metrics.
             </p>
             <div class="header-meta font-mono">
                 <div><span class="text-slate-500">Date:</span> 2026-10-23</div>
-                <div><span class="text-slate-500">Status:</span> <span class="text-emerald-400 font-bold">[ALL TIERS PASSED]</span></div>
+                <div><span class="text-slate-500">Status:</span> <span class="text-emerald-400 font-bold">[ALL 15 MODELS VERIFIED]</span></div>
                 <div><span class="text-slate-500">Validation Protocol:</span> LOSO Subject-Grouped GroupKFold (64 Folds)</div>
-                <div><span class="text-slate-500">Hardware:</span> NVIDIA CUDA GPU (PyTorch 2.5.1)</div>
+                <div><span class="text-slate-500">Author:</span> kishor</div>
             </div>
         </header>
 
         <!-- TOP NAVIGATION BAR -->
         <div class="nav-bar">
             <div class="nav-tabs">
-                <button class="nav-tab active" id="tab-tier0" onclick="switchPage('page-tier0')">
-                    Page 1: Classical Baselines & Leakage Gap (Tier 0 & 2)
+                <button class="nav-tab active" id="tab-leaderboard" onclick="switchPage('page-leaderboard')">
+                    🏆 All Models Leaderboard (15 Models)
+                </button>
+                <button class="nav-tab" id="tab-tier0" onclick="switchPage('page-tier0')">
+                    Page 1: Classical Baselines & Leakage (Tier 0 & 2)
                 </button>
                 <button class="nav-tab" id="tab-tier1" onclick="switchPage('page-tier1')">
                     Page 2: Sequence & Adversarial GRL Models (Tier 1)
                 </button>
             </div>
             <div>
-                <button class="btn-nav" id="top-next-btn" onclick="switchPage('page-tier1')">
-                    Next: Deep Learning & GRL Models &rarr;
+                <button class="btn-nav" id="top-next-btn" onclick="switchPage('page-tier0')">
+                    Next: Classical Baselines &rarr;
                 </button>
             </div>
         </div>
 
         <!-- ==================================================================== -->
-        <!-- PAGE 1: TIER 0 CLASSICAL BASELINES & MULTIMODAL VIEWS                -->
+        <!-- TAB 1: ALL-MODELS MASTER COMPARISON BOX & LEADERBOARD                 -->
         <!-- ==================================================================== -->
-        <div id="page-tier0" class="report-page active">
-            <!-- KPI SUMMARY CARDS -->
+        <div id="page-leaderboard" class="report-page active">
+            <!-- TOP CHAMPION SUMMARY CARDS -->
             <div class="grid grid-cols-4 gap-4 mb-8">
-                <div class="kpi-card">
-                    <div class="kpi-label">Champion Physio Model</div>
-                    <div class="kpi-val text-emerald-400 font-mono">0.6303</div>
-                    <div class="kpi-sub">Random Forest (view_physio_all, Opt F1)</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid var(--accent-secondary);">
-                    <div class="kpi-label">Champion Multimodal Model</div>
-                    <div class="kpi-val text-sky-400 font-mono">0.6698</div>
-                    <div class="kpi-sub">Random Forest (view_physio_face, Opt F1)</div>
-                </div>
                 <div class="kpi-card" style="border-left: 4px solid var(--accent-amber);">
-                    <div class="kpi-label">Facial Modality Gain</div>
-                    <div class="kpi-val text-amber-400 font-mono">+3.95%</div>
-                    <div class="kpi-sub">+0.0505 ROC AUC (0.6517 &rarr; 0.7022)</div>
+                    <div class="kpi-label">🥇 Multimodal Champion</div>
+                    <div class="kpi-val text-amber-400 font-mono">0.6698</div>
+                    <div class="kpi-sub">rf_view_physio_face (Acc: 68.89%, AUC: 0.7022)</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--accent-emerald);">
+                    <div class="kpi-label">🥈 Physio Baseline Champion</div>
+                    <div class="kpi-val text-emerald-400 font-mono">0.6303</div>
+                    <div class="kpi-sub">rf_view_physio_all (Acc: 67.36%, AUC: 0.6517)</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--accent-primary);">
+                    <div class="kpi-label">🥉 Deep GRL Champion</div>
+                    <div class="kpi-val text-sky-400 font-mono">0.5962</div>
+                    <div class="kpi-sub">cnn_gru_grl_view_physio_all (Flat 0.50 Thresh)</div>
                 </div>
                 <div class="kpi-card" style="border-left: 4px solid var(--accent-rose);">
                     <div class="kpi-label">Identity Leakage Gap</div>
                     <div class="kpi-val text-rose-400 font-mono">+11.55%</div>
-                    <div class="kpi-sub">Un-grouped Random K-Fold Inflation (GRL Indicated)</div>
+                    <div class="kpi-sub">Delta_leak from Un-grouped Splits (GRL Indicated)</div>
                 </div>
             </div>
 
+            <!-- MASTER COMPARISON BOX / LEADERBOARD TABLE -->
+            <div class="card">
+                <h2>Master Comparison Box: All 15 Models Ranked by Macro F1</h2>
+                <p class="text-slate-300 text-sm mb-4">
+                    Complete cross-tier comparison table sorted from highest to lowest Macro F1. Every number is programmatically loaded directly from each model's <code>metrics.json</code> artifact.
+                </p>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 100px; text-align: center;">Rank</th>
+                                <th>Model Name</th>
+                                <th>Category</th>
+                                <th>View</th>
+                                <th>Features</th>
+                                <th>Default F1 (0.5)</th>
+                                <th>Opt Thresh</th>
+                                <th>Opt Accuracy</th>
+                                <th>Opt Macro F1</th>
+                                <th>Stress F1</th>
+                                <th>Balanced Acc</th>
+                                <th>ROC AUC</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            
+        <tr>
+            <td class="font-bold text-center"><span class="badge" style="background:#fbbf24;color:#000;">#1 Champion</span></td>
+            <td class="font-bold text-white font-mono">rf_view_physio_face</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_face</span></td>
+            <td>216</td>
+            <td class="font-mono text-slate-300">0.6576</td>
+            <td class="font-mono text-amber-400 font-bold">0.45</td>
+            <td class="font-mono font-bold text-white">0.6889</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.6698</td>
+            <td class="font-mono text-amber-300">0.5903</td>
+            <td class="font-mono text-slate-300">0.6701</td>
+            <td class="font-mono text-sky-300 font-semibold">0.7022</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="badge" style="background:#94a3b8;color:#000;">#2 Runner-Up</span></td>
+            <td class="font-bold text-white font-mono">xgboost_view_physio_face</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_face</span></td>
+            <td>216</td>
+            <td class="font-mono text-slate-300">0.6466</td>
+            <td class="font-mono text-amber-400 font-bold">0.60</td>
+            <td class="font-mono font-bold text-white">0.6924</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.6565</td>
+            <td class="font-mono text-amber-300">0.5455</td>
+            <td class="font-mono text-slate-300">0.6524</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6850</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="badge" style="background:#b45309;color:#fff;">#3 Bronze</span></td>
+            <td class="font-bold text-white font-mono">rf_view_physio_all</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.6168</td>
+            <td class="font-mono text-amber-400 font-bold">0.45</td>
+            <td class="font-mono font-bold text-white">0.6736</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.6303</td>
+            <td class="font-mono text-amber-300">0.5038</td>
+            <td class="font-mono text-slate-300">0.6270</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6517</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#4</span></td>
+            <td class="font-bold text-white font-mono">xgboost_view_physio_all</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.6230</td>
+            <td class="font-mono text-amber-400 font-bold">0.50</td>
+            <td class="font-mono font-bold text-white">0.6585</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.6230</td>
+            <td class="font-mono text-amber-300">0.5072</td>
+            <td class="font-mono text-slate-300">0.6207</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6149</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#5</span></td>
+            <td class="font-bold text-white font-mono">lightgbm_view_physio_all</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.6124</td>
+            <td class="font-mono text-amber-400 font-bold">0.55</td>
+            <td class="font-mono font-bold text-white">0.6664</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.6183</td>
+            <td class="font-mono text-amber-300">0.4828</td>
+            <td class="font-mono text-slate-300">0.6157</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6097</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#6</span></td>
+            <td class="font-bold text-white font-mono">cnn_gru_grl_view_physio_all</td>
+            <td><span class="badge badge-f1">Deep / GRL</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.5962</td>
+            <td class="font-mono text-amber-400 font-bold">0.50</td>
+            <td class="font-mono font-bold text-white">0.6255</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5962</td>
+            <td class="font-mono text-amber-300">0.4872</td>
+            <td class="font-mono text-slate-300">0.5957</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6185</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#7</span></td>
+            <td class="font-bold text-white font-mono">cnn_gru_view_physio_all</td>
+            <td><span class="badge badge-f1">Deep / GRL</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.5927</td>
+            <td class="font-mono text-amber-400 font-bold">0.35</td>
+            <td class="font-mono font-bold text-white">0.6126</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5933</td>
+            <td class="font-mono text-amber-300">0.5046</td>
+            <td class="font-mono text-slate-300">0.5963</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6045</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#8</span></td>
+            <td class="font-bold text-white font-mono">logreg_view_physio_all</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.5852</td>
+            <td class="font-mono text-amber-400 font-bold">0.65</td>
+            <td class="font-mono font-bold text-white">0.6313</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5921</td>
+            <td class="font-mono text-amber-300">0.4657</td>
+            <td class="font-mono text-slate-300">0.5906</td>
+            <td class="font-mono text-sky-300 font-semibold">0.5998</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#9</span></td>
+            <td class="font-bold text-white font-mono">knn_view_physio_all</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.5366</td>
+            <td class="font-mono text-amber-400 font-bold">0.25</td>
+            <td class="font-mono font-bold text-white">0.5961</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5884</td>
+            <td class="font-mono text-amber-300">0.5320</td>
+            <td class="font-mono text-slate-300">0.6014</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6302</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#10</span></td>
+            <td class="font-bold text-white font-mono">svm_view_physio_all</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.5333</td>
+            <td class="font-mono text-amber-400 font-bold">0.35</td>
+            <td class="font-mono font-bold text-white">0.5911</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5839</td>
+            <td class="font-mono text-amber-300">0.5289</td>
+            <td class="font-mono text-slate-300">0.5974</td>
+            <td class="font-mono text-sky-300 font-semibold">0.6065</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#11</span></td>
+            <td class="font-bold text-white font-mono">gru_view_physio_all</td>
+            <td><span class="badge badge-f1">Deep / GRL</span></td>
+            <td><span class="badge badge-view">view_physio_all</span></td>
+            <td>132</td>
+            <td class="font-mono text-slate-300">0.5701</td>
+            <td class="font-mono text-amber-400 font-bold">0.10</td>
+            <td class="font-mono font-bold text-white">0.5947</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5775</td>
+            <td class="font-mono text-amber-300">0.4924</td>
+            <td class="font-mono text-slate-300">0.5817</td>
+            <td class="font-mono text-sky-300 font-semibold">0.5969</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#12</span></td>
+            <td class="font-bold text-white font-mono">xgboost_view_physio_voice</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_voice</span></td>
+            <td>272</td>
+            <td class="font-mono text-slate-300">0.4747</td>
+            <td class="font-mono text-amber-400 font-bold">0.75</td>
+            <td class="font-mono font-bold text-white">0.6631</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5593</td>
+            <td class="font-mono text-amber-300">0.7731</td>
+            <td class="font-mono text-slate-300">0.5577</td>
+            <td class="font-mono text-sky-300 font-semibold">0.5607</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#13</span></td>
+            <td class="font-bold text-white font-mono">xgboost_view_tri_modal</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_tri_modal</span></td>
+            <td>356</td>
+            <td class="font-mono text-slate-300">0.4536</td>
+            <td class="font-mono text-amber-400 font-bold">0.85</td>
+            <td class="font-mono font-bold text-white">0.6057</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5403</td>
+            <td class="font-mono text-amber-300">0.7137</td>
+            <td class="font-mono text-slate-300">0.5434</td>
+            <td class="font-mono text-sky-300 font-semibold">0.5699</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#14</span></td>
+            <td class="font-bold text-white font-mono">rf_view_physio_voice</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_physio_voice</span></td>
+            <td>272</td>
+            <td class="font-mono text-slate-300">0.4357</td>
+            <td class="font-mono text-amber-400 font-bold">0.65</td>
+            <td class="font-mono font-bold text-white">0.6253</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5371</td>
+            <td class="font-mono text-amber-300">0.7392</td>
+            <td class="font-mono text-slate-300">0.5366</td>
+            <td class="font-mono text-sky-300 font-semibold">0.5441</td>
+        </tr>
+        
+        <tr>
+            <td class="font-bold text-center"><span class="font-mono text-slate-400">#15</span></td>
+            <td class="font-bold text-white font-mono">rf_view_tri_modal</td>
+            <td><span class="badge badge-view">Classical</span></td>
+            <td><span class="badge badge-view">view_tri_modal</span></td>
+            <td>356</td>
+            <td class="font-mono text-slate-300">0.4208</td>
+            <td class="font-mono text-amber-400 font-bold">0.70</td>
+            <td class="font-mono font-bold text-white">0.5886</td>
+            <td class="font-mono font-bold text-emerald-400 text-lg">0.5338</td>
+            <td class="font-mono text-amber-300">0.6936</td>
+            <td class="font-mono text-slate-300">0.5402</td>
+            <td class="font-mono text-sky-300 font-semibold">0.5778</td>
+        </tr>
+        
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- EXECUTIVE INSIGHTS -->
+            <div class="card">
+                <h2>Executive Findings & Synthesis</h2>
+                <div class="grid grid-cols-3 gap-6">
+                    <div class="p-4 bg-slate-900 rounded-lg border border-slate-800">
+                        <h4 class="text-white font-bold mb-2">1. The Value of Multimodal Signals</h4>
+                        <p class="text-slate-300 text-sm leading-relaxed">
+                            Adding 84 facial Action Units and eye gaze vectors (<code>view_physio_face</code>) produced the absolute highest performance across the entire benchmark, boosting Macro F1 to <strong>0.6698</strong> (+3.95% over physio alone) and ROC AUC to <strong>0.7022</strong>.
+                        </p>
+                    </div>
+                    <div class="p-4 bg-slate-900 rounded-lg border border-slate-800">
+                        <h4 class="text-white font-bold mb-2">2. Classical vs Deep on Stationary Windows</h4>
+                        <p class="text-slate-300 text-sm leading-relaxed">
+                            On 60-second calibrated physiological windows, tree-based models (Random Forest: <strong>0.6303</strong>, XGBoost: <strong>0.6230</strong>) outperform recurrent sequence backpropagation (CNN-GRU: <strong>0.5962</strong>) due to tree ensembles' sample efficiency on stationary tabular features.
+                        </p>
+                    </div>
+                    <div class="p-4 bg-slate-900 rounded-lg border border-slate-800">
+                        <h4 class="text-white font-bold mb-2">3. Adversarial GRL Regularization</h4>
+                        <p class="text-slate-300 text-sm leading-relaxed">
+                            While un-regularized deep models required shifting decision boundaries down to 0.10–0.35, the <strong>Adversarial GRL head (λ=0.02)</strong> suppressed subject identity, improved accuracy to <strong>62.55%</strong>, and stabilized the optimal threshold exactly at <strong>0.50</strong>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FOOTER NAVIGATION -->
+            <div class="page-footer-nav">
+                <div>
+                    <span class="text-slate-400 font-medium">Master Overview: All 15 Models</span>
+                </div>
+                <div>
+                    <button class="btn-nav" onclick="switchPage('page-tier0')">
+                        Inspect Classical Diagnostic Curves (Page 1) &rarr;
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================================================================== -->
+        <!-- TAB 2 / PAGE 1: TIER 0 CLASSICAL BASELINES & MULTIMODAL VIEWS        -->
+        <!-- ==================================================================== -->
+        <div id="page-tier0" class="report-page">
             <!-- MASTER BENCHMARK TABLE -->
             <div class="card">
                 <h2>Page 1 Benchmark Performance Table (Tier 0 Classical & Multimodal)</h2>
@@ -1371,7 +1673,9 @@
             <!-- FOOTER NEXT BUTTON -->
             <div class="page-footer-nav">
                 <div>
-                    <span class="text-slate-400 font-medium">Page 1 of 2: Classical Baselines</span>
+                    <button class="btn-nav btn-nav-outline" onclick="switchPage('page-leaderboard')">
+                        &larr; Back to Leaderboard
+                    </button>
                 </div>
                 <div>
                     <button class="btn-nav" onclick="switchPage('page-tier1')">
@@ -1382,33 +1686,9 @@
         </div>
 
         <!-- ==================================================================== -->
-        <!-- PAGE 2: TIER 1 SEQUENCE MODELS & ADVERSARIAL GRL                     -->
+        <!-- TAB 3 / PAGE 2: TIER 1 SEQUENCE MODELS & ADVERSARIAL GRL             -->
         <!-- ==================================================================== -->
         <div id="page-tier1" class="report-page">
-            <!-- KPI SUMMARY CARDS FOR DEEP LEARNING -->
-            <div class="grid grid-cols-4 gap-4 mb-8">
-                <div class="kpi-card" style="border-left: 4px solid var(--accent-emerald);">
-                    <div class="kpi-label">Top Deep Architecture</div>
-                    <div class="kpi-val text-emerald-400 font-mono">0.5962</div>
-                    <div class="kpi-sub">1D-CNN + GRU + GRL (&lambda;=0.02)</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid var(--accent-primary);">
-                    <div class="kpi-label">GRL Accuracy Gain</div>
-                    <div class="kpi-val text-sky-400 font-mono">+1.29%</div>
-                    <div class="kpi-sub">61.26% &rarr; 62.55% under strict LOSO</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid var(--accent-secondary);">
-                    <div class="kpi-label">Threshold Stability</div>
-                    <div class="kpi-val text-indigo-400 font-mono">0.50 Flat</div>
-                    <div class="kpi-sub">GRL naturally eliminates threshold skew</div>
-                </div>
-                <div class="kpi-card" style="border-left: 4px solid var(--accent-amber);">
-                    <div class="kpi-label">Classical vs Deep Gap</div>
-                    <div class="kpi-val text-amber-400 font-mono">-3.41%</div>
-                    <div class="kpi-sub">RF (0.6303) vs CNN-GRU-GRL (0.5962)</div>
-                </div>
-            </div>
-
             <!-- TIER 1 BENCHMARK TABLE -->
             <div class="card">
                 <h2>Page 2 Benchmark Performance Table (Tier 1 Sequence & GRL Models)</h2>
@@ -1716,7 +1996,9 @@
                     </button>
                 </div>
                 <div>
-                    <span class="text-slate-400 font-medium">Page 2 of 2: Deep Learning & GRL</span>
+                    <button class="btn-nav" onclick="switchPage('page-leaderboard')">
+                        Return to All Models Leaderboard &rarr;
+                    </button>
                 </div>
             </div>
         </div>
@@ -1742,7 +2024,10 @@
             }
 
             // Highlight tab
-            var tabBtn = (pageId === 'page-tier0') ? document.getElementById('tab-tier0') : document.getElementById('tab-tier1');
+            var tabBtn = document.getElementById(
+                (pageId === 'page-leaderboard') ? 'tab-leaderboard' :
+                (pageId === 'page-tier0') ? 'tab-tier0' : 'tab-tier1'
+            );
             if (tabBtn) {
                 tabBtn.classList.add('active');
             }
@@ -1750,12 +2035,15 @@
             // Update top button text/action
             var topBtn = document.getElementById('top-next-btn');
             if (topBtn) {
-                if (pageId === 'page-tier0') {
+                if (pageId === 'page-leaderboard') {
+                    topBtn.innerHTML = 'Next: Classical Baselines &rarr;';
+                    topBtn.setAttribute('onclick', "switchPage('page-tier0')");
+                } else if (pageId === 'page-tier0') {
                     topBtn.innerHTML = 'Next: Deep Learning & GRL Models &rarr;';
                     topBtn.setAttribute('onclick', "switchPage('page-tier1')");
                 } else {
-                    topBtn.innerHTML = '&larr; Previous: Classical Baselines';
-                    topBtn.setAttribute('onclick', "switchPage('page-tier0')");
+                    topBtn.innerHTML = '&larr; Back to Leaderboard';
+                    topBtn.setAttribute('onclick', "switchPage('page-leaderboard')");
                 }
             }
 
@@ -1763,10 +2051,12 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // Handle URL hash navigation (e.g. #page-tier1)
+        // Handle URL hash navigation
         window.addEventListener('DOMContentLoaded', function() {
             if (window.location.hash === '#page-tier1') {
                 switchPage('page-tier1');
+            } else if (window.location.hash === '#page-tier0') {
+                switchPage('page-tier0');
             }
         });
     </script>
