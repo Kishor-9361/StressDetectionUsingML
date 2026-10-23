@@ -28,56 +28,46 @@ def img_to_b64(img_path: Path) -> str:
 
 def load_models_by_tier():
     models_dir = Path("models")
+    if not models_dir.exists():
+        return [], []
     
-    tier0_names = [
-        "rf_view_physio_all",
-        "xgboost_view_physio_all",
-        "lightgbm_view_physio_all",
-        "logreg_view_physio_all",
-        "knn_view_physio_all",
-        "svm_view_physio_all",
-        "rf_view_physio_face",
-        "xgboost_view_physio_face",
-        "rf_view_physio_voice",
-        "xgboost_view_physio_voice",
-        "rf_view_tri_modal",
-        "xgboost_view_tri_modal",
-    ]
+    tier0 = []
+    tier1 = []
     
-    tier1_names = [
-        "cnn_gru_grl_view_physio_all",
-        "cnn_gru_view_physio_all",
-        "gru_view_physio_all"
-    ]
-    
-    def load_group(names, tier_label):
-        records = []
-        for name in names:
-            m_dir = models_dir / name
-            if not m_dir.exists():
-                continue
-            runs = sorted(m_dir.glob("2026*"))
-            if not runs:
-                continue
-            latest_run = runs[-1]
-            with open(latest_run / "metrics.json", "r", encoding="utf-8") as f:
-                metrics = json.load(f)
-            records.append({
-                "model_name": name,
-                "tier_label": tier_label,
-                "view_name": metrics["view_name"],
-                "timestamp": metrics["timestamp"],
-                "run_hash": metrics["run_hash"],
-                "run_dir": latest_run,
-                "metrics": metrics,
-                "cm_img_b64": img_to_b64(latest_run / "confusion_matrix.png"),
-                "roc_img_b64": img_to_b64(latest_run / "roc.png"),
-                "pr_img_b64": img_to_b64(latest_run / "pr.png"),
-            })
-        return records
+    for m_dir in sorted(models_dir.iterdir()):
+        if not m_dir.is_dir():
+            continue
+        runs = sorted(m_dir.glob("2026*"))
+        if not runs:
+            continue
+        latest_run = runs[-1]
+        metrics_file = latest_run / "metrics.json"
+        if not metrics_file.exists():
+            continue
+        with open(metrics_file, "r", encoding="utf-8") as f:
+            metrics = json.load(f)
+        
+        name = m_dir.name
+        is_deep = any(k in name for k in ["gru", "cnn", "grl", "deep", "lstm"])
+        tier_label = "Tier 1/2 Deep & GRL" if is_deep else "Tier 0 Classical"
+        
+        record = {
+            "model_name": name,
+            "tier_label": tier_label,
+            "view_name": metrics.get("view_name", name),
+            "timestamp": metrics.get("timestamp", ""),
+            "run_hash": metrics.get("run_hash", ""),
+            "run_dir": latest_run,
+            "metrics": metrics,
+            "cm_img_b64": img_to_b64(latest_run / "confusion_matrix.png"),
+            "roc_img_b64": img_to_b64(latest_run / "roc.png"),
+            "pr_img_b64": img_to_b64(latest_run / "pr.png"),
+        }
+        if is_deep:
+            tier1.append(record)
+        else:
+            tier0.append(record)
 
-    tier0 = load_group(tier0_names, "Tier 0 Classical")
-    tier1 = load_group(tier1_names, "Tier 1/2 Deep & GRL")
     return tier0, tier1
 
 def load_leakage_data():
@@ -227,6 +217,13 @@ def render_model_cards(models):
 
 def generate_multi_page_html(tier0_models, tier1_models, leakage_data, leakage_img_b64):
     all_models = tier0_models + tier1_models
+    sorted_models = sorted(all_models, key=lambda m: m["metrics"]["optimal_threshold"]["macro_f1"], reverse=True)
+    
+    c1 = sorted_models[0] if sorted_models else None
+    c2 = sorted_models[1] if len(sorted_models) > 1 else c1
+    c_deep = next((m for m in sorted_models if "Deep" in m["tier_label"]), sorted_models[2] if len(sorted_models) > 2 else c1)
+    delta_leak = leakage_data.get("leakage_gap", {}).get("delta_accuracy", 0.0) * 100
+
     leaderboard_table = render_leaderboard_rows(all_models)
     
     tier0_table = render_table_rows(tier0_models)
@@ -240,7 +237,7 @@ def generate_multi_page_html(tier0_models, tier1_models, leakage_data, leakage_i
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StressID Model Training & Benchmark Report</title>
+    <title>StressID Face & Voice Model Training & Benchmark Report</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -556,15 +553,15 @@ def generate_multi_page_html(tier0_models, tier1_models, leakage_data, leakage_i
 <body>
     <div class="container">
         <header>
-            <h1>StressID Model Training & Benchmark Report</h1>
+            <h1>StressID Face & Voice Model Training & Benchmark Report</h1>
             <p class="text-slate-300 mt-2">
-                Programmatically consolidated results across all 15 trained models (Tier 0 Classical Baselines, Multimodal Views, Tier 1 Sequence Models, and Tier 2 Adversarial GRL). 
+                Programmatically consolidated results across all {len(all_models)} trained models on Face and Voice modalities alone (Tier 0 Classical Baselines, Bimodal Audiovisual Views, Tier 1 Sequence Models, and Tier 2 Adversarial GRL). 
                 All runs adhere strictly to Subject-Grouped Leave-One-Subject-Out (LOSO) cross-validation with zero hand-typed metrics.
             </p>
             <div class="header-meta font-mono">
                 <div><span class="text-slate-500">Date:</span> 2026-10-23</div>
-                <div><span class="text-slate-500">Status:</span> <span class="text-emerald-400 font-bold">[ALL 15 MODELS VERIFIED]</span></div>
-                <div><span class="text-slate-500">Validation Protocol:</span> LOSO Subject-Grouped GroupKFold (64 Folds)</div>
+                <div><span class="text-slate-500">Status:</span> <span class="text-emerald-400 font-bold">[ALL {len(all_models)} MODELS VERIFIED]</span></div>
+                <div><span class="text-slate-500">Validation Protocol:</span> Strict Subject-Grouped LOSO</div>
                 <div><span class="text-slate-500">Author:</span> kishor</div>
             </div>
         </header>
@@ -573,7 +570,7 @@ def generate_multi_page_html(tier0_models, tier1_models, leakage_data, leakage_i
         <div class="nav-bar">
             <div class="nav-tabs">
                 <button class="nav-tab active" id="tab-leaderboard" onclick="switchPage('page-leaderboard')">
-                    🏆 All Models Leaderboard (15 Models)
+                    🏆 All Models Leaderboard ({len(all_models)} Models)
                 </button>
                 <button class="nav-tab" id="tab-tier0" onclick="switchPage('page-tier0')">
                     Page 1: Classical Baselines & Leakage (Tier 0 & 2)
@@ -596,30 +593,30 @@ def generate_multi_page_html(tier0_models, tier1_models, leakage_data, leakage_i
             <!-- TOP CHAMPION SUMMARY CARDS -->
             <div class="grid grid-cols-4 gap-4 mb-8">
                 <div class="kpi-card" style="border-left: 4px solid var(--accent-amber);">
-                    <div class="kpi-label">🥇 Multimodal Champion</div>
-                    <div class="kpi-val text-amber-400 font-mono">0.6698</div>
-                    <div class="kpi-sub">rf_view_physio_face (Acc: 68.89%, AUC: 0.7022)</div>
+                    <div class="kpi-label">🥇 Overall Champion</div>
+                    <div class="kpi-val text-amber-400 font-mono">{c1['metrics']['optimal_threshold']['macro_f1']:.4f}</div>
+                    <div class="kpi-sub">{c1['model_name']} (Acc: {c1['metrics']['optimal_threshold']['accuracy']*100:.2f}%)</div>
                 </div>
                 <div class="kpi-card" style="border-left: 4px solid var(--accent-emerald);">
-                    <div class="kpi-label">🥈 Physio Baseline Champion</div>
-                    <div class="kpi-val text-emerald-400 font-mono">0.6303</div>
-                    <div class="kpi-sub">rf_view_physio_all (Acc: 67.36%, AUC: 0.6517)</div>
+                    <div class="kpi-label">🥈 Runner-Up Champion</div>
+                    <div class="kpi-val text-emerald-400 font-mono">{c2['metrics']['optimal_threshold']['macro_f1']:.4f}</div>
+                    <div class="kpi-sub">{c2['model_name']} (Acc: {c2['metrics']['optimal_threshold']['accuracy']*100:.2f}%)</div>
                 </div>
                 <div class="kpi-card" style="border-left: 4px solid var(--accent-primary);">
-                    <div class="kpi-label">🥉 Deep GRL Champion</div>
-                    <div class="kpi-val text-sky-400 font-mono">0.5962</div>
-                    <div class="kpi-sub">cnn_gru_grl_view_physio_all (Flat 0.50 Thresh)</div>
+                    <div class="kpi-label">🥉 Deep/GRL Champion</div>
+                    <div class="kpi-val text-sky-400 font-mono">{c_deep['metrics']['optimal_threshold']['macro_f1']:.4f}</div>
+                    <div class="kpi-sub">{c_deep['model_name']} (Acc: {c_deep['metrics']['optimal_threshold']['accuracy']*100:.2f}%)</div>
                 </div>
                 <div class="kpi-card" style="border-left: 4px solid var(--accent-rose);">
                     <div class="kpi-label">Identity Leakage Gap</div>
-                    <div class="kpi-val text-rose-400 font-mono">+11.55%</div>
-                    <div class="kpi-sub">Delta_leak from Un-grouped Splits (GRL Indicated)</div>
+                    <div class="kpi-val text-rose-400 font-mono">+{delta_leak:.2f}%</div>
+                    <div class="kpi-sub">Delta_leak from Un-grouped Splits</div>
                 </div>
             </div>
 
             <!-- MASTER COMPARISON BOX / LEADERBOARD TABLE -->
             <div class="card">
-                <h2>Master Comparison Box: All 15 Models Ranked by Macro F1</h2>
+                <h2>Master Comparison Box: All {len(all_models)} Models Ranked by Macro F1</h2>
                 <p class="text-slate-300 text-sm mb-4">
                     Complete cross-tier comparison table sorted from highest to lowest Macro F1. Every number is programmatically loaded directly from each model's <code>metrics.json</code> artifact.
                 </p>
@@ -941,27 +938,33 @@ def update_markdown_report(tier0_models, tier1_models, leakage_data):
     all_models = tier0_models + tier1_models
     sorted_models = sorted(all_models, key=lambda m: m["metrics"]["optimal_threshold"]["macro_f1"], reverse=True)
     
+    c1 = sorted_models[0]
+    c2 = sorted_models[1]
+    c_deep = next((m for m in sorted_models if "Deep" in m["tier_label"]), sorted_models[2])
+    delta_acc = leakage_data.get("leakage_gap", {}).get("delta_accuracy", 0.0) * 100
+    delta_f1 = leakage_data.get("leakage_gap", {}).get("delta_macro_f1", 0.0)
+
     md_lines = [
-        "# StressID Model Training & Benchmark Report",
+        "# StressID Face & Voice Model Training & Benchmark Report",
         "",
         "**Generated Date:** 2026-10-23  ",
         "**Evaluation Protocol:** Strict Subject-Grouped Leave-One-Subject-Out (LOSO) Cross-Validation  ",
         "**Author:** kishor <kishorveeraragavan28@gmail.com>  ",
         "**Governance Specification:** [MODEL_TRAINING_PIPELINE.md](file:///e:/StressProject/phase2/docs/MODEL_TRAINING_PIPELINE.md)  ",
-        "**Audit Verification:** 100% programmatically generated from verified `metrics.json` artifacts; zero hand-typed values.",
+        f"**Audit Verification:** 100% programmatically generated across all {len(all_models)} models from verified `metrics.json` artifacts; zero hand-typed values.",
         "",
         "---",
         "",
         "## 1. Executive Summary & Top Champions",
         "",
-        "- 🥇 **Multimodal Champion:** `rf_view_physio_face` (**Macro F1 = 0.6698**, Accuracy = 0.6889, ROC AUC = 0.7022 at threshold 0.45).",
-        "- 🥈 **Physiological Baseline Champion:** `rf_view_physio_all` (**Macro F1 = 0.6303**, Accuracy = 0.6736, ROC AUC = 0.6517 at threshold 0.45).",
-        "- 🥉 **Deep Sequence & GRL Champion:** `cnn_gru_grl_view_physio_all` (**Macro F1 = 0.5962**, Accuracy = 62.55% at default 0.50 threshold).",
-        "- **Identity Leakage Empirical Proof (Tier 2):** Random row-wise cross-validation artificially inflated accuracy by **+8.54% to +11.55%** (up to 78.91%) and Macro F1 by **+14.54%** (up to 0.7758), mathematically justifying an adversarial GRL head.",
+        f"- 🥇 **Overall Champion:** `{c1['model_name']}` (**Macro F1 = {c1['metrics']['optimal_threshold']['macro_f1']:.4f}**, Accuracy = {c1['metrics']['optimal_threshold']['accuracy']*100:.2f}%, ROC AUC = {c1['metrics'].get('roc_auc', 0.0):.4f} at threshold {c1['metrics']['optimal_threshold']['threshold']:.2f}).",
+        f"- 🥈 **Runner-Up Champion:** `{c2['model_name']}` (**Macro F1 = {c2['metrics']['optimal_threshold']['macro_f1']:.4f}**, Accuracy = {c2['metrics']['optimal_threshold']['accuracy']*100:.2f}%, ROC AUC = {c2['metrics'].get('roc_auc', 0.0):.4f} at threshold {c2['metrics']['optimal_threshold']['threshold']:.2f}).",
+        f"- 🥉 **Deep Sequence & GRL Champion:** `{c_deep['model_name']}` (**Macro F1 = {c_deep['metrics']['optimal_threshold']['macro_f1']:.4f}**, Accuracy = {c_deep['metrics']['optimal_threshold']['accuracy']*100:.2f}% at threshold {c_deep['metrics']['optimal_threshold']['threshold']:.2f}).",
+        f"- **Identity Leakage Empirical Proof (Tier 2):** Random row-wise cross-validation artificially inflated accuracy by **+{delta_acc:.2f}%** and Macro F1 by **+{delta_f1:.4f}**, mathematically proving the necessity of subject-grouped LOSO and adversarial GRL.",
         "",
         "---",
         "",
-        "## 2. Master Model Comparison Box: All 15 Models Ranked by Macro F1",
+        f"## 2. Master Model Comparison Box: All {len(all_models)} Models Ranked by Macro F1",
         "",
         "| Rank | Model | Category | View | Features | Default F1 (0.5) | Opt Thresh | Opt Accuracy | Opt Macro F1 | Stress F1 | Balanced Acc | ROC AUC |",
         "|:---:|---|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"

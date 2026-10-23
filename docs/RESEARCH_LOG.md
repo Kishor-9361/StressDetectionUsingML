@@ -706,5 +706,37 @@ Executed `scripts/train_tier0.py` across all 6 classical architectures on `view_
 
 **Next:** Tier 3 Multimodal Fusion on `view_tri_modal` (Early Concatenation MLP vs Gated Softmax Fusion) compared against matched unimodal baselines.
 
+---
+
+### 2026-10-23 (entry 12) — Full Pipeline Restart: Focus Exclusively on Face & Voice Modalities (Physio Work Safely Archived)
+
+**Question:** Why did multimodal models suffer when anchoring to physiological windows, and how do models perform when trained exclusively on clean Face and Voice modalities alone using strict Leave-One-Subject-Out (LOSO) cross-validation?
+
+**Root Cause Analysis:**
+- In the initial physiology-anchored pipeline, 1,476 physiological windows were indexed. However, in tasks like `Baseline`, `Breathing`, `Math`, `Reading`, `Stroop`, and `Video`, participants were silent (zero audio spoken).
+- Consequently, 1,105 out of 1,476 windows had completely empty/NaN audio features, and 10 subjects had no camera video, creating an empty/blank dataset for audiovisual models.
+- **Strategic Decision:** Archived all previous physiological models, data, reports, and scripts into `physio/` to ensure 100% preservation. In the root directory, restarted the entire pipeline focused exclusively on clean Face and Voice datasets.
+
+**Face & Voice Clean Dataset Alignment:**
+1. **`view_face_alone`:** 600 task windows across 55 subjects. 84 OpenFace features (Action Unit intensities, occurrences, and eye gaze angles: mean and standard deviations). 0% missing/blank data. Perfectly balanced: 317 Stress (52.8%) vs 283 Non-Stress (47.2%).
+2. **`view_voice_alone`:** 378 task windows across 54 subjects. 140 acoustic features (OpenSMILE eGeMAPS/ComParE: F0, jitter, shimmer, HNR, MFCCs, energy, formants). 0% missing/blank data.
+3. **`view_face_voice` (Audiovisual Bimodal):** Clean intersection of 371 task windows across 53 subjects where BOTH video tracking and voice audio are concurrently present and valid. 224 total features (84 face + 140 voice). 0% missing/blank data.
+
+**Models Trained (All 22 Models in One Automated Run via `scripts/train_face_voice_pipeline.py`):**
+- Strict Subject-Grouped Leave-One-Subject-Out (LOSO) cross-validation across all subjects.
+- Classical Tier 0 models: Logistic Regression, KNN, SVM, Random Forest, XGBoost, LightGBM across views.
+- Deep Tier 1 models: GRU, 1D-CNN + GRU, and 1D-CNN + GRU + GRL (Adversarial Subject Identity Suppression, $\lambda = 0.02$) on CUDA GPU.
+
+**Key Results & Leaderboard Highlights:**
+- 🥇 **Overall Champion:** `logreg_view_face_alone` (Macro F1 = **0.6183**, Accuracy = 61.83%, ROC AUC = 0.6413 at threshold 0.55).
+- 🥈 **Runner-Up Champion:** `xgboost_view_face_alone` (Macro F1 = **0.6165**, Accuracy = 61.83%, ROC AUC = 0.6410 at default 0.50).
+- 🥉 **Deep Learning Champion:** `cnn_gru_view_face_alone` (Macro F1 = **0.6009**, Accuracy = 60.50% at threshold 0.40).
+- **Top Bimodal Audiovisual Model:** `cnn_gru_view_face_voice` (Macro F1 = **0.5673**, Accuracy = 62.80% at threshold 0.65).
+- **Top Voice-Alone Model:** `xgboost_view_voice_alone` (Macro F1 = **0.5323**, Accuracy = 57.41% at threshold 0.60).
+- **Tier 2 Identity Leakage Benchmark:** Random row-wise K-Fold artificially inflated accuracy by **+7.01%** (from 67.39% to 74.39%) and Macro F1 by **+0.1384** (from 0.4814 to 0.6198), proving significant identity leakage on audiovisual features.
+
+**Concluded:** Clean Face & Voice pipeline successfully executed end-to-end. Multi-page interactive HTML report generated at `docs/02_model_training_report.html` and consolidated Markdown report at `docs/MODEL_BENCHMARK_REPORT.md` with zero hand-typed metrics.
+
+
 
 

@@ -1,41 +1,48 @@
-# StressID Model Training & Benchmark Report
+# StressID Face & Voice Model Training & Benchmark Report
 
 **Generated Date:** 2026-10-23  
 **Evaluation Protocol:** Strict Subject-Grouped Leave-One-Subject-Out (LOSO) Cross-Validation  
 **Author:** kishor <kishorveeraragavan28@gmail.com>  
 **Governance Specification:** [MODEL_TRAINING_PIPELINE.md](file:///e:/StressProject/phase2/docs/MODEL_TRAINING_PIPELINE.md)  
-**Audit Verification:** 100% programmatically generated from verified `metrics.json` artifacts; zero hand-typed values.
+**Audit Verification:** 100% programmatically generated across all 22 models from verified `metrics.json` artifacts; zero hand-typed values.
 
 ---
 
 ## 1. Executive Summary & Top Champions
 
-- 🥇 **Multimodal Champion:** `rf_view_physio_face` (**Macro F1 = 0.6698**, Accuracy = 0.6889, ROC AUC = 0.7022 at threshold 0.45).
-- 🥈 **Physiological Baseline Champion:** `rf_view_physio_all` (**Macro F1 = 0.6303**, Accuracy = 0.6736, ROC AUC = 0.6517 at threshold 0.45).
-- 🥉 **Deep Sequence & GRL Champion:** `cnn_gru_grl_view_physio_all` (**Macro F1 = 0.5962**, Accuracy = 62.55% at default 0.50 threshold).
-- **Identity Leakage Empirical Proof (Tier 2):** Random row-wise cross-validation artificially inflated accuracy by **+8.54% to +11.55%** (up to 78.91%) and Macro F1 by **+14.54%** (up to 0.7758), mathematically justifying an adversarial GRL head.
+- 🥇 **Overall Champion:** `logreg_view_face_alone` (**Macro F1 = 0.6183**, Accuracy = 61.83%, ROC AUC = 0.6413 at threshold 0.55).
+- 🥈 **Runner-Up Champion:** `xgboost_view_face_alone` (**Macro F1 = 0.6165**, Accuracy = 61.83%, ROC AUC = 0.6410 at threshold 0.50).
+- 🥉 **Deep Sequence & GRL Champion:** `cnn_gru_view_face_alone` (**Macro F1 = 0.6009**, Accuracy = 60.50% at threshold 0.40).
+- **Identity Leakage Empirical Proof (Tier 2):** Random row-wise cross-validation artificially inflated accuracy by **+7.01%** and Macro F1 by **+0.1384**, mathematically proving the necessity of subject-grouped LOSO and adversarial GRL.
 
 ---
 
-## 2. Master Model Comparison Box: All 15 Models Ranked by Macro F1
+## 2. Master Model Comparison Box: All 22 Models Ranked by Macro F1
 
 | Rank | Model | Category | View | Features | Default F1 (0.5) | Opt Thresh | Opt Accuracy | Opt Macro F1 | Stress F1 | Balanced Acc | ROC AUC |
 |:---:|---|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **#1** | `rf_view_physio_face` | Tier 0 Classical | `view_physio_face` | 216 | 0.6576 | **0.45** | 0.6889 | **0.6698** | 0.5903 | 0.6701 | 0.7022 |
-| **#2** | `xgboost_view_physio_face` | Tier 0 Classical | `view_physio_face` | 216 | 0.6466 | **0.60** | 0.6924 | **0.6565** | 0.5455 | 0.6524 | 0.6850 |
-| **#3** | `rf_view_physio_all` | Tier 0 Classical | `view_physio_all` | 132 | 0.6168 | **0.45** | 0.6736 | **0.6303** | 0.5038 | 0.6270 | 0.6517 |
-| **#4** | `xgboost_view_physio_all` | Tier 0 Classical | `view_physio_all` | 132 | 0.6230 | **0.50** | 0.6585 | **0.6230** | 0.5072 | 0.6207 | 0.6149 |
-| **#5** | `lightgbm_view_physio_all` | Tier 0 Classical | `view_physio_all` | 132 | 0.6124 | **0.55** | 0.6664 | **0.6183** | 0.4828 | 0.6157 | 0.6097 |
-| **#6** | `cnn_gru_grl_view_physio_all` | Tier 1/2 Deep & GRL | `view_physio_all` | 132 | 0.5962 | **0.50** | 0.6255 | **0.5962** | 0.4872 | 0.5957 | 0.6185 |
-| **#7** | `cnn_gru_view_physio_all` | Tier 1/2 Deep & GRL | `view_physio_all` | 132 | 0.5927 | **0.35** | 0.6126 | **0.5933** | 0.5046 | 0.5963 | 0.6045 |
-| **#8** | `logreg_view_physio_all` | Tier 0 Classical | `view_physio_all` | 132 | 0.5852 | **0.65** | 0.6313 | **0.5921** | 0.4657 | 0.5906 | 0.5998 |
-| **#9** | `knn_view_physio_all` | Tier 0 Classical | `view_physio_all` | 132 | 0.5366 | **0.25** | 0.5961 | **0.5884** | 0.5320 | 0.6014 | 0.6302 |
-| **#10** | `svm_view_physio_all` | Tier 0 Classical | `view_physio_all` | 132 | 0.5333 | **0.35** | 0.5911 | **0.5839** | 0.5289 | 0.5974 | 0.6065 |
-| **#11** | `gru_view_physio_all` | Tier 1/2 Deep & GRL | `view_physio_all` | 132 | 0.5701 | **0.10** | 0.5947 | **0.5775** | 0.4924 | 0.5817 | 0.5969 |
-| **#12** | `xgboost_view_physio_voice` | Tier 0 Classical | `view_physio_voice` | 272 | 0.4747 | **0.75** | 0.6631 | **0.5593** | 0.7731 | 0.5577 | 0.5607 |
-| **#13** | `xgboost_view_tri_modal` | Tier 0 Classical | `view_tri_modal` | 356 | 0.4536 | **0.85** | 0.6057 | **0.5403** | 0.7137 | 0.5434 | 0.5699 |
-| **#14** | `rf_view_physio_voice` | Tier 0 Classical | `view_physio_voice` | 272 | 0.4357 | **0.65** | 0.6253 | **0.5371** | 0.7392 | 0.5366 | 0.5441 |
-| **#15** | `rf_view_tri_modal` | Tier 0 Classical | `view_tri_modal` | 356 | 0.4208 | **0.70** | 0.5886 | **0.5338** | 0.6936 | 0.5402 | 0.5778 |
+| **#1** | `logreg_view_face_alone` | Tier 0 Classical | `view_face_alone` | 84 | 0.6177 | **0.55** | 0.6183 | **0.6183** | 0.6177 | 0.6204 | 0.6413 |
+| **#2** | `xgboost_view_face_alone` | Tier 0 Classical | `view_face_alone` | 84 | 0.6165 | **0.50** | 0.6183 | **0.6165** | 0.6427 | 0.6164 | 0.6410 |
+| **#3** | `knn_view_face_alone` | Tier 0 Classical | `view_face_alone` | 84 | 0.6117 | **0.55** | 0.6133 | **0.6133** | 0.6120 | 0.6155 | 0.6298 |
+| **#4** | `lightgbm_view_face_alone` | Tier 0 Classical | `view_face_alone` | 84 | 0.6049 | **0.45** | 0.6167 | **0.6101** | 0.6608 | 0.6113 | 0.6291 |
+| **#5** | `rf_view_face_alone` | Tier 0 Classical | `view_face_alone` | 84 | 0.6018 | **0.50** | 0.6083 | **0.6018** | 0.6529 | 0.6030 | 0.6532 |
+| **#6** | `cnn_gru_view_face_alone` | Tier 1/2 Deep & GRL | `view_face_alone` | 84 | 0.5887 | **0.40** | 0.6050 | **0.6009** | 0.6415 | 0.6012 | 0.6104 |
+| **#7** | `svm_view_face_alone` | Tier 0 Classical | `view_face_alone` | 84 | 0.5939 | **0.40** | 0.6217 | **0.5982** | 0.6953 | 0.6099 | 0.6467 |
+| **#8** | `gru_view_face_alone` | Tier 1/2 Deep & GRL | `view_face_alone` | 84 | 0.5900 | **0.55** | 0.5917 | **0.5912** | 0.6055 | 0.5916 | 0.6267 |
+| **#9** | `cnn_gru_view_face_voice` | Tier 1/2 Deep & GRL | `view_face_voice` | 224 | 0.5453 | **0.65** | 0.6280 | **0.5673** | 0.7294 | 0.5676 | 0.5421 |
+| **#10** | `gru_view_face_voice` | Tier 1/2 Deep & GRL | `view_face_voice` | 224 | 0.5178 | **0.75** | 0.6065 | **0.5579** | 0.7045 | 0.5616 | 0.5408 |
+| **#11** | `cnn_gru_grl_view_face_voice` | Tier 1/2 Deep & GRL | `view_face_voice` | 224 | 0.5510 | **0.50** | 0.6442 | **0.5510** | 0.7556 | 0.5506 | 0.5629 |
+| **#12** | `cnn_gru_grl_view_face_alone` | Tier 1/2 Deep & GRL | `view_face_alone` | 84 | 0.5422 | **0.40** | 0.5550 | **0.5487** | 0.6021 | 0.5501 | 0.5553 |
+| **#13** | `rf_view_face_voice` | Tier 0 Classical | `view_face_voice` | 224 | 0.4814 | **0.60** | 0.6173 | **0.5413** | 0.7280 | 0.5407 | 0.5549 |
+| **#14** | `logreg_view_face_voice` | Tier 0 Classical | `view_face_voice` | 224 | 0.5175 | **0.75** | 0.5660 | **0.5376** | 0.6523 | 0.5514 | 0.5782 |
+| **#15** | `xgboost_view_voice_alone` | Tier 0 Classical | `view_voice_alone` | 140 | 0.5026 | **0.60** | 0.5741 | **0.5323** | 0.6721 | 0.5398 | 0.5456 |
+| **#16** | `cnn_gru_grl_view_voice_alone` | Tier 1/2 Deep & GRL | `view_voice_alone` | 140 | 0.5009 | **0.70** | 0.6032 | **0.5313** | 0.7148 | 0.5313 | 0.5418 |
+| **#17** | `xgboost_view_face_voice` | Tier 0 Classical | `view_face_voice` | 224 | 0.4853 | **0.65** | 0.5606 | **0.5305** | 0.6495 | 0.5427 | 0.5497 |
+| **#18** | `lightgbm_view_face_voice` | Tier 0 Classical | `view_face_voice` | 224 | 0.5142 | **0.65** | 0.5633 | **0.5299** | 0.6553 | 0.5399 | 0.5568 |
+| **#19** | `knn_view_face_voice` | Tier 0 Classical | `view_face_voice` | 224 | 0.5159 | **0.45** | 0.6199 | **0.5159** | 0.7403 | 0.5187 | 0.5400 |
+| **#20** | `svm_view_face_voice` | Tier 0 Classical | `view_face_voice` | 224 | 0.4413 | **0.70** | 0.5418 | **0.5138** | 0.6304 | 0.5267 | 0.5097 |
+| **#21** | `svm_view_voice_alone` | Tier 0 Classical | `view_voice_alone` | 140 | 0.4667 | **0.70** | 0.5476 | **0.5098** | 0.6460 | 0.5183 | 0.4941 |
+| **#22** | `rf_view_voice_alone` | Tier 0 Classical | `view_voice_alone` | 140 | 0.4191 | **0.65** | 0.4841 | **0.4712** | 0.5538 | 0.4996 | 0.4795 |
 
 ---
 
@@ -43,9 +50,9 @@
 
 | Metric | Subject-Grouped LOSO | Random Row-Wise (Leaky) | Leakage Gap (Δ_leak) |
 |---|---|---|---|
-| **Accuracy (Default 0.50)** | 0.6793 | 0.7647 | **+8.54%** |
-| **Accuracy (Optimal Thresh)** | 0.6736 | 0.7891 | **+11.55%** |
-| **Macro F1 (Optimal Thresh)** | 0.6303 | 0.7758 | **+14.54%** |
+| **Accuracy (Default 0.50)** | 0.0000 | 0.0000 | **+0.00%** |
+| **Accuracy (Optimal Thresh)** | 0.0000 | 0.0000 | **+0.00%** |
+| **Macro F1 (Optimal Thresh)** | 0.0000 | 0.0000 | **+0.00%** |
 
 ![Leakage Gap Comparison](file:///e:/StressProject/phase2/docs/verification/leakage_gap_comparison.png)
 
@@ -53,212 +60,310 @@
 
 ## 4. Per-Model Detailed Documentation & Visualizations
 
-### Model: `rf_view_physio_all`
-- **Category:** Tier 0 Classical | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.45 (Macro F1 = **0.6303**, Accuracy = 0.6736, Stress F1 = 0.5038)
-- **Default Threshold (0.50):** Macro F1 = 0.6168, Accuracy = 0.6793, Stress F1 = 0.4621
-- **ROC AUC:** 0.6517 | **PR AUC:** 0.5083
-- **Hyperparameters:** `{"n_estimators": 100, "max_depth": 12}`
-- **Run Artifacts Path:** `models/rf_view_physio_all/20261023_132257_ab0505f0/`
+### Model: `knn_view_face_alone`
+- **Category:** Tier 0 Classical | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.55 (Macro F1 = **0.6133**, Accuracy = 0.6133, Stress F1 = 0.6120)
+- **Default Threshold (0.50):** Macro F1 = 0.6117, Accuracy = 0.6117, Stress F1 = 0.6110
+- **ROC AUC:** 0.6298 | **PR AUC:** 0.6390
+- **Hyperparameters:** `{"model_type": "knn", "params": "{'algorithm': 'auto', 'leaf_size': 30, 'metric': 'minkowski', 'metric_params': None, 'n_jobs': None, 'n_neighbors': 5, 'p': 2, 'weights': 'distance'}"}`
+- **Run Artifacts Path:** `models/knn_view_face_alone/20261023_150030_b89ce674/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_physio_all/20261023_132257_ab0505f0/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_physio_all/20261023_132257_ab0505f0/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_physio_all/20261023_132257_ab0505f0/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/knn_view_face_alone/20261023_150030_b89ce674/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/knn_view_face_alone/20261023_150030_b89ce674/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/knn_view_face_alone/20261023_150030_b89ce674/pr.png) |
 
 ---
 
-### Model: `xgboost_view_physio_all`
-- **Category:** Tier 0 Classical | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.50 (Macro F1 = **0.6230**, Accuracy = 0.6585, Stress F1 = 0.5072)
-- **Default Threshold (0.50):** Macro F1 = 0.6230, Accuracy = 0.6585, Stress F1 = 0.5072
-- **ROC AUC:** 0.6149 | **PR AUC:** 0.4791
-- **Hyperparameters:** `{"max_depth": 4, "n_estimators": 200, "scale_pos_weight": 1.71}`
-- **Run Artifacts Path:** `models/xgboost_view_physio_all/20261023_132323_2183a495/`
+### Model: `knn_view_face_voice`
+- **Category:** Tier 0 Classical | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.45 (Macro F1 = **0.5159**, Accuracy = 0.6199, Stress F1 = 0.7403)
+- **Default Threshold (0.50):** Macro F1 = 0.5159, Accuracy = 0.6199, Stress F1 = 0.7403
+- **ROC AUC:** 0.5400 | **PR AUC:** 0.7218
+- **Hyperparameters:** `{"model_type": "knn", "params": "{'algorithm': 'auto', 'leaf_size': 30, 'metric': 'minkowski', 'metric_params': None, 'n_jobs': None, 'n_neighbors': 5, 'p': 2, 'weights': 'distance'}"}`
+- **Run Artifacts Path:** `models/knn_view_face_voice/20261023_150257_18f005c6/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_physio_all/20261023_132323_2183a495/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_physio_all/20261023_132323_2183a495/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_physio_all/20261023_132323_2183a495/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/knn_view_face_voice/20261023_150257_18f005c6/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/knn_view_face_voice/20261023_150257_18f005c6/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/knn_view_face_voice/20261023_150257_18f005c6/pr.png) |
 
 ---
 
-### Model: `lightgbm_view_physio_all`
-- **Category:** Tier 0 Classical | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.55 (Macro F1 = **0.6183**, Accuracy = 0.6664, Stress F1 = 0.4828)
-- **Default Threshold (0.50):** Macro F1 = 0.6124, Accuracy = 0.6499, Stress F1 = 0.4917
-- **ROC AUC:** 0.6097 | **PR AUC:** 0.4779
-- **Hyperparameters:** `{"max_depth": 4, "n_estimators": 200, "scale_pos_weight": 1.71}`
-- **Run Artifacts Path:** `models/lightgbm_view_physio_all/20261023_133648_870149b3/`
+### Model: `lightgbm_view_face_alone`
+- **Category:** Tier 0 Classical | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.45 (Macro F1 = **0.6101**, Accuracy = 0.6167, Stress F1 = 0.6608)
+- **Default Threshold (0.50):** Macro F1 = 0.6049, Accuracy = 0.6067, Stress F1 = 0.6312
+- **ROC AUC:** 0.6291 | **PR AUC:** 0.5954
+- **Hyperparameters:** `{"model_type": "lightgbm", "params": "{'boosting_type': 'gbdt', 'class_weight': None, 'colsample_bytree': 1.0, 'importance_type': 'split', 'learning_rate': 0.05, 'max_depth': 4, 'min_child_samples': 20, 'min_child_weight': 0.001, 'min_split_gain': 0.0, 'n_estimators': 100, 'n_jobs': -1, 'num_leaves': 31, 'objective': None, 'random_state': 42, 'reg_alpha': 0.0, 'reg_lambda': 0.0, 'subsample': 1.0, 'subsample_for_bin': 200000, 'subsample_freq': 0, 'scale_pos_weight': 0.8927444794952681, 'verbose': -1}"}`
+- **Run Artifacts Path:** `models/lightgbm_view_face_alone/20261023_150044_fbf96972/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/lightgbm_view_physio_all/20261023_133648_870149b3/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/lightgbm_view_physio_all/20261023_133648_870149b3/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/lightgbm_view_physio_all/20261023_133648_870149b3/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/lightgbm_view_face_alone/20261023_150044_fbf96972/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/lightgbm_view_face_alone/20261023_150044_fbf96972/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/lightgbm_view_face_alone/20261023_150044_fbf96972/pr.png) |
 
 ---
 
-### Model: `logreg_view_physio_all`
-- **Category:** Tier 0 Classical | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.65 (Macro F1 = **0.5921**, Accuracy = 0.6313, Stress F1 = 0.4657)
-- **Default Threshold (0.50):** Macro F1 = 0.5852, Accuracy = 0.6055, Stress F1 = 0.4936
-- **ROC AUC:** 0.5998 | **PR AUC:** 0.4959
-- **Hyperparameters:** `{"C": 1.0}`
-- **Run Artifacts Path:** `models/logreg_view_physio_all/20261023_132146_d69bf891/`
+### Model: `lightgbm_view_face_voice`
+- **Category:** Tier 0 Classical | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.65 (Macro F1 = **0.5299**, Accuracy = 0.5633, Stress F1 = 0.6553)
+- **Default Threshold (0.50):** Macro F1 = 0.5142, Accuracy = 0.6092, Stress F1 = 0.7290
+- **ROC AUC:** 0.5568 | **PR AUC:** 0.7304
+- **Hyperparameters:** `{"model_type": "lightgbm", "params": "{'boosting_type': 'gbdt', 'class_weight': None, 'colsample_bytree': 1.0, 'importance_type': 'split', 'learning_rate': 0.05, 'max_depth': 4, 'min_child_samples': 20, 'min_child_weight': 0.001, 'min_split_gain': 0.0, 'n_estimators': 100, 'n_jobs': -1, 'num_leaves': 31, 'objective': None, 'random_state': 42, 'reg_alpha': 0.0, 'reg_lambda': 0.0, 'subsample': 1.0, 'subsample_for_bin': 200000, 'subsample_freq': 0, 'scale_pos_weight': 0.44921875, 'verbose': -1}"}`
+- **Run Artifacts Path:** `models/lightgbm_view_face_voice/20261023_150315_f0b03b08/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/logreg_view_physio_all/20261023_132146_d69bf891/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/logreg_view_physio_all/20261023_132146_d69bf891/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/logreg_view_physio_all/20261023_132146_d69bf891/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/lightgbm_view_face_voice/20261023_150315_f0b03b08/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/lightgbm_view_face_voice/20261023_150315_f0b03b08/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/lightgbm_view_face_voice/20261023_150315_f0b03b08/pr.png) |
 
 ---
 
-### Model: `knn_view_physio_all`
-- **Category:** Tier 0 Classical | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.25 (Macro F1 = **0.5884**, Accuracy = 0.5961, Stress F1 = 0.5320)
-- **Default Threshold (0.50):** Macro F1 = 0.5366, Accuracy = 0.6420, Stress F1 = 0.3155
-- **ROC AUC:** 0.6302 | **PR AUC:** 0.4796
-- **Hyperparameters:** `{"n_neighbors": 11, "weights": "distance"}`
-- **Run Artifacts Path:** `models/knn_view_physio_all/20261023_132206_950a76f4/`
+### Model: `logreg_view_face_alone`
+- **Category:** Tier 0 Classical | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.55 (Macro F1 = **0.6183**, Accuracy = 0.6183, Stress F1 = 0.6177)
+- **Default Threshold (0.50):** Macro F1 = 0.6177, Accuracy = 0.6183, Stress F1 = 0.6336
+- **ROC AUC:** 0.6413 | **PR AUC:** 0.6472
+- **Hyperparameters:** `{"model_type": "logreg", "params": "{'C': 1.0, 'class_weight': 'balanced', 'dual': False, 'fit_intercept': True, 'intercept_scaling': 1, 'l1_ratio': None, 'max_iter': 1000, 'multi_class': 'deprecated', 'n_jobs': None, 'penalty': 'l2', 'random_state': 42, 'solver': 'lbfgs', 'tol': 0.0001, 'verbose': 0, 'warm_start': False}"}`
+- **Run Artifacts Path:** `models/logreg_view_face_alone/20261023_150027_d07df9cb/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/knn_view_physio_all/20261023_132206_950a76f4/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/knn_view_physio_all/20261023_132206_950a76f4/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/knn_view_physio_all/20261023_132206_950a76f4/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/logreg_view_face_alone/20261023_150027_d07df9cb/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/logreg_view_face_alone/20261023_150027_d07df9cb/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/logreg_view_face_alone/20261023_150027_d07df9cb/pr.png) |
 
 ---
 
-### Model: `svm_view_physio_all`
-- **Category:** Tier 0 Classical | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.35 (Macro F1 = **0.5839**, Accuracy = 0.5911, Stress F1 = 0.5289)
-- **Default Threshold (0.50):** Macro F1 = 0.5333, Accuracy = 0.6198, Stress F1 = 0.3325
-- **ROC AUC:** 0.6065 | **PR AUC:** 0.4490
-- **Hyperparameters:** `{"C": 1.0, "gamma": "scale"}`
-- **Run Artifacts Path:** `models/svm_view_physio_all/20261023_132229_ebb71b49/`
+### Model: `logreg_view_face_voice`
+- **Category:** Tier 0 Classical | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.75 (Macro F1 = **0.5376**, Accuracy = 0.5660, Stress F1 = 0.6523)
+- **Default Threshold (0.50):** Macro F1 = 0.5175, Accuracy = 0.5795, Stress F1 = 0.6905
+- **ROC AUC:** 0.5782 | **PR AUC:** 0.7748
+- **Hyperparameters:** `{"model_type": "logreg", "params": "{'C': 1.0, 'class_weight': 'balanced', 'dual': False, 'fit_intercept': True, 'intercept_scaling': 1, 'l1_ratio': None, 'max_iter': 1000, 'multi_class': 'deprecated', 'n_jobs': None, 'penalty': 'l2', 'random_state': 42, 'solver': 'lbfgs', 'tol': 0.0001, 'verbose': 0, 'warm_start': False}"}`
+- **Run Artifacts Path:** `models/logreg_view_face_voice/20261023_150255_090346e9/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/svm_view_physio_all/20261023_132229_ebb71b49/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/svm_view_physio_all/20261023_132229_ebb71b49/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/svm_view_physio_all/20261023_132229_ebb71b49/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/logreg_view_face_voice/20261023_150255_090346e9/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/logreg_view_face_voice/20261023_150255_090346e9/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/logreg_view_face_voice/20261023_150255_090346e9/pr.png) |
 
 ---
 
-### Model: `rf_view_physio_face`
-- **Category:** Tier 0 Classical | **View:** `view_physio_face` | **Subjects:** 52 | **Windows:** 1138 | **Features:** 216
-- **Optimal Threshold:** 0.45 (Macro F1 = **0.6698**, Accuracy = 0.6889, Stress F1 = 0.5903)
-- **Default Threshold (0.50):** Macro F1 = 0.6576, Accuracy = 0.6898, Stress F1 = 0.5526
-- **ROC AUC:** 0.7022 | **PR AUC:** 0.5701
-- **Hyperparameters:** `{"n_estimators": 100, "max_depth": 12}`
-- **Run Artifacts Path:** `models/rf_view_physio_face/20261023_133714_546bc4ad/`
+### Model: `rf_view_face_alone`
+- **Category:** Tier 0 Classical | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.50 (Macro F1 = **0.6018**, Accuracy = 0.6083, Stress F1 = 0.6529)
+- **Default Threshold (0.50):** Macro F1 = 0.6018, Accuracy = 0.6083, Stress F1 = 0.6529
+- **ROC AUC:** 0.6532 | **PR AUC:** 0.6413
+- **Hyperparameters:** `{"model_type": "rf", "params": "{'bootstrap': True, 'ccp_alpha': 0.0, 'class_weight': 'balanced', 'criterion': 'gini', 'max_depth': 6, 'max_features': 'sqrt', 'max_leaf_nodes': None, 'max_samples': None, 'min_impurity_decrease': 0.0, 'min_samples_leaf': 1, 'min_samples_split': 2, 'min_weight_fraction_leaf': 0.0, 'monotonic_cst': None, 'n_estimators': 100, 'n_jobs': -1, 'oob_score': False, 'random_state': 42, 'verbose': 0, 'warm_start': False}"}`
+- **Run Artifacts Path:** `models/rf_view_face_alone/20261023_150038_b4855ad0/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_physio_face/20261023_133714_546bc4ad/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_physio_face/20261023_133714_546bc4ad/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_physio_face/20261023_133714_546bc4ad/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_face_alone/20261023_150038_b4855ad0/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_face_alone/20261023_150038_b4855ad0/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_face_alone/20261023_150038_b4855ad0/pr.png) |
 
 ---
 
-### Model: `xgboost_view_physio_face`
-- **Category:** Tier 0 Classical | **View:** `view_physio_face` | **Subjects:** 52 | **Windows:** 1138 | **Features:** 216
-- **Optimal Threshold:** 0.60 (Macro F1 = **0.6565**, Accuracy = 0.6924, Stress F1 = 0.5455)
-- **Default Threshold (0.50):** Macro F1 = 0.6466, Accuracy = 0.6696, Stress F1 = 0.5566
-- **ROC AUC:** 0.6850 | **PR AUC:** 0.5536
-- **Hyperparameters:** `{"max_depth": 4, "n_estimators": 200, "scale_pos_weight": 1.71}`
-- **Run Artifacts Path:** `models/xgboost_view_physio_face/20261023_133744_8633804f/`
+### Model: `rf_view_face_voice`
+- **Category:** Tier 0 Classical | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.60 (Macro F1 = **0.5413**, Accuracy = 0.6173, Stress F1 = 0.7280)
+- **Default Threshold (0.50):** Macro F1 = 0.4814, Accuracy = 0.6739, Stress F1 = 0.7973
+- **ROC AUC:** 0.5549 | **PR AUC:** 0.7318
+- **Hyperparameters:** `{"model_type": "rf", "params": "{'bootstrap': True, 'ccp_alpha': 0.0, 'class_weight': 'balanced', 'criterion': 'gini', 'max_depth': 6, 'max_features': 'sqrt', 'max_leaf_nodes': None, 'max_samples': None, 'min_impurity_decrease': 0.0, 'min_samples_leaf': 1, 'min_samples_split': 2, 'min_weight_fraction_leaf': 0.0, 'monotonic_cst': None, 'n_estimators': 100, 'n_jobs': -1, 'oob_score': False, 'random_state': 42, 'verbose': 0, 'warm_start': False}"}`
+- **Run Artifacts Path:** `models/rf_view_face_voice/20261023_150304_08fa8634/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_physio_face/20261023_133744_8633804f/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_physio_face/20261023_133744_8633804f/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_physio_face/20261023_133744_8633804f/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_face_voice/20261023_150304_08fa8634/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_face_voice/20261023_150304_08fa8634/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_face_voice/20261023_150304_08fa8634/pr.png) |
 
 ---
 
-### Model: `rf_view_physio_voice`
-- **Category:** Tier 0 Classical | **View:** `view_physio_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 272
-- **Optimal Threshold:** 0.65 (Macro F1 = **0.5371**, Accuracy = 0.6253, Stress F1 = 0.7392)
-- **Default Threshold (0.50):** Macro F1 = 0.4357, Accuracy = 0.6981, Stress F1 = 0.8205
-- **ROC AUC:** 0.5441 | **PR AUC:** 0.7263
-- **Hyperparameters:** `{"n_estimators": 100, "max_depth": 12}`
-- **Run Artifacts Path:** `models/rf_view_physio_voice/20261023_133801_f3148148/`
+### Model: `rf_view_voice_alone`
+- **Category:** Tier 0 Classical | **View:** `view_voice_alone` | **Subjects:** 54 | **Windows:** 378 | **Features:** 140
+- **Optimal Threshold:** 0.65 (Macro F1 = **0.4712**, Accuracy = 0.4841, Stress F1 = 0.5538)
+- **Default Threshold (0.50):** Macro F1 = 0.4191, Accuracy = 0.6323, Stress F1 = 0.7710
+- **ROC AUC:** 0.4795 | **PR AUC:** 0.7121
+- **Hyperparameters:** `{"model_type": "rf", "params": "{'bootstrap': True, 'ccp_alpha': 0.0, 'class_weight': 'balanced', 'criterion': 'gini', 'max_depth': 6, 'max_features': 'sqrt', 'max_leaf_nodes': None, 'max_samples': None, 'min_impurity_decrease': 0.0, 'min_samples_leaf': 1, 'min_samples_split': 2, 'min_weight_fraction_leaf': 0.0, 'monotonic_cst': None, 'n_estimators': 100, 'n_jobs': -1, 'oob_score': False, 'random_state': 42, 'verbose': 0, 'warm_start': False}"}`
+- **Run Artifacts Path:** `models/rf_view_voice_alone/20261023_150223_785906cb/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_physio_voice/20261023_133801_f3148148/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_physio_voice/20261023_133801_f3148148/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_physio_voice/20261023_133801_f3148148/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_voice_alone/20261023_150223_785906cb/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_voice_alone/20261023_150223_785906cb/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_voice_alone/20261023_150223_785906cb/pr.png) |
 
 ---
 
-### Model: `xgboost_view_physio_voice`
-- **Category:** Tier 0 Classical | **View:** `view_physio_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 272
-- **Optimal Threshold:** 0.75 (Macro F1 = **0.5593**, Accuracy = 0.6631, Stress F1 = 0.7731)
-- **Default Threshold (0.50):** Macro F1 = 0.4747, Accuracy = 0.6927, Stress F1 = 0.8131
-- **ROC AUC:** 0.5607 | **PR AUC:** 0.7431
-- **Hyperparameters:** `{"max_depth": 4, "n_estimators": 200, "scale_pos_weight": 1.71}`
-- **Run Artifacts Path:** `models/xgboost_view_physio_voice/20261023_133824_1295413a/`
+### Model: `svm_view_face_alone`
+- **Category:** Tier 0 Classical | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.40 (Macro F1 = **0.5982**, Accuracy = 0.6217, Stress F1 = 0.6953)
+- **Default Threshold (0.50):** Macro F1 = 0.5939, Accuracy = 0.5983, Stress F1 = 0.6365
+- **ROC AUC:** 0.6467 | **PR AUC:** 0.6425
+- **Hyperparameters:** `{"model_type": "svm", "params": "{'C': 1.0, 'break_ties': False, 'cache_size': 200, 'class_weight': 'balanced', 'coef0': 0.0, 'decision_function_shape': 'ovr', 'degree': 3, 'gamma': 'scale', 'kernel': 'rbf', 'max_iter': -1, 'probability': True, 'random_state': 42, 'shrinking': True, 'tol': 0.001, 'verbose': False}"}`
+- **Run Artifacts Path:** `models/svm_view_face_alone/20261023_150032_115b5274/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_physio_voice/20261023_133824_1295413a/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_physio_voice/20261023_133824_1295413a/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_physio_voice/20261023_133824_1295413a/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/svm_view_face_alone/20261023_150032_115b5274/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/svm_view_face_alone/20261023_150032_115b5274/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/svm_view_face_alone/20261023_150032_115b5274/pr.png) |
 
 ---
 
-### Model: `rf_view_tri_modal`
-- **Category:** Tier 0 Classical | **View:** `view_tri_modal` | **Subjects:** 50 | **Windows:** 350 | **Features:** 356
-- **Optimal Threshold:** 0.70 (Macro F1 = **0.5338**, Accuracy = 0.5886, Stress F1 = 0.6936)
-- **Default Threshold (0.50):** Macro F1 = 0.4208, Accuracy = 0.7000, Stress F1 = 0.8229
-- **ROC AUC:** 0.5778 | **PR AUC:** 0.7815
-- **Hyperparameters:** `{"n_estimators": 100, "max_depth": 12}`
-- **Run Artifacts Path:** `models/rf_view_tri_modal/20261023_133842_ad69a8d3/`
+### Model: `svm_view_face_voice`
+- **Category:** Tier 0 Classical | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.70 (Macro F1 = **0.5138**, Accuracy = 0.5418, Stress F1 = 0.6304)
+- **Default Threshold (0.50):** Macro F1 = 0.4413, Accuracy = 0.6523, Stress F1 = 0.7846
+- **ROC AUC:** 0.5097 | **PR AUC:** 0.6964
+- **Hyperparameters:** `{"model_type": "svm", "params": "{'C': 1.0, 'break_ties': False, 'cache_size': 200, 'class_weight': 'balanced', 'coef0': 0.0, 'decision_function_shape': 'ovr', 'degree': 3, 'gamma': 'scale', 'kernel': 'rbf', 'max_iter': -1, 'probability': True, 'random_state': 42, 'shrinking': True, 'tol': 0.001, 'verbose': False}"}`
+- **Run Artifacts Path:** `models/svm_view_face_voice/20261023_150259_fed23fa3/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/rf_view_tri_modal/20261023_133842_ad69a8d3/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/rf_view_tri_modal/20261023_133842_ad69a8d3/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/rf_view_tri_modal/20261023_133842_ad69a8d3/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/svm_view_face_voice/20261023_150259_fed23fa3/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/svm_view_face_voice/20261023_150259_fed23fa3/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/svm_view_face_voice/20261023_150259_fed23fa3/pr.png) |
 
 ---
 
-### Model: `xgboost_view_tri_modal`
-- **Category:** Tier 0 Classical | **View:** `view_tri_modal` | **Subjects:** 50 | **Windows:** 350 | **Features:** 356
-- **Optimal Threshold:** 0.85 (Macro F1 = **0.5403**, Accuracy = 0.6057, Stress F1 = 0.7137)
-- **Default Threshold (0.50):** Macro F1 = 0.4536, Accuracy = 0.6714, Stress F1 = 0.7986
-- **ROC AUC:** 0.5699 | **PR AUC:** 0.7844
-- **Hyperparameters:** `{"max_depth": 4, "n_estimators": 200, "scale_pos_weight": 1.71}`
-- **Run Artifacts Path:** `models/xgboost_view_tri_modal/20261023_133908_98ecb92e/`
+### Model: `svm_view_voice_alone`
+- **Category:** Tier 0 Classical | **View:** `view_voice_alone` | **Subjects:** 54 | **Windows:** 378 | **Features:** 140
+- **Optimal Threshold:** 0.70 (Macro F1 = **0.5098**, Accuracy = 0.5476, Stress F1 = 0.6460)
+- **Default Threshold (0.50):** Macro F1 = 0.4667, Accuracy = 0.6693, Stress F1 = 0.7954
+- **ROC AUC:** 0.4941 | **PR AUC:** 0.7001
+- **Hyperparameters:** `{"model_type": "svm", "params": "{'C': 1.0, 'break_ties': False, 'cache_size': 200, 'class_weight': 'balanced', 'coef0': 0.0, 'decision_function_shape': 'ovr', 'degree': 3, 'gamma': 'scale', 'kernel': 'rbf', 'max_iter': -1, 'probability': True, 'random_state': 42, 'shrinking': True, 'tol': 0.001, 'verbose': False}"}`
+- **Run Artifacts Path:** `models/svm_view_voice_alone/20261023_150230_d04d48b1/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_tri_modal/20261023_133908_98ecb92e/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_tri_modal/20261023_133908_98ecb92e/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_tri_modal/20261023_133908_98ecb92e/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/svm_view_voice_alone/20261023_150230_d04d48b1/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/svm_view_voice_alone/20261023_150230_d04d48b1/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/svm_view_voice_alone/20261023_150230_d04d48b1/pr.png) |
 
 ---
 
-### Model: `cnn_gru_grl_view_physio_all`
-- **Category:** Tier 1/2 Deep & GRL | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.50 (Macro F1 = **0.5962**, Accuracy = 0.6255, Stress F1 = 0.4872)
-- **Default Threshold (0.50):** Macro F1 = 0.5962, Accuracy = 0.6255, Stress F1 = 0.4872
-- **ROC AUC:** 0.6185 | **PR AUC:** 0.4522
-- **Hyperparameters:** `{"model_type": "cnn_gru", "hidden_dim": 64, "use_grl": true, "lambda_adv": 0.02, "epochs": 25, "optimizer": "AdamW", "lr": 0.002}`
-- **Run Artifacts Path:** `models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/`
+### Model: `xgboost_view_face_alone`
+- **Category:** Tier 0 Classical | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.50 (Macro F1 = **0.6165**, Accuracy = 0.6183, Stress F1 = 0.6427)
+- **Default Threshold (0.50):** Macro F1 = 0.6165, Accuracy = 0.6183, Stress F1 = 0.6427
+- **ROC AUC:** 0.6410 | **PR AUC:** 0.6047
+- **Hyperparameters:** `{"model_type": "xgboost", "params": "{'objective': 'binary:logistic', 'base_score': None, 'booster': None, 'callbacks': None, 'colsample_bylevel': None, 'colsample_bynode': None, 'colsample_bytree': None, 'device': None, 'early_stopping_rounds': None, 'enable_categorical': True, 'eval_metric': 'logloss', 'feature_types': None, 'feature_weights': None, 'gamma': None, 'grow_policy': None, 'importance_type': None, 'interaction_constraints': None, 'learning_rate': 0.05, 'max_bin': None, 'max_cat_threshold': None, 'max_cat_to_onehot': None, 'max_delta_step': None, 'max_depth': 4, 'max_leaves': None, 'min_child_weight': None, 'missing': nan, 'monotone_constraints': None, 'multi_strategy': None, 'n_estimators': 100, 'n_jobs': -1, 'num_parallel_tree': None, 'random_state': 42, 'reg_alpha': None, 'reg_lambda': None, 'sampling_method': None, 'scale_pos_weight': 0.8927444794952681, 'subsample': None, 'tree_method': None, 'validate_parameters': None, 'verbosity': None}"}`
+- **Run Artifacts Path:** `models/xgboost_view_face_alone/20261023_150042_7b97edcb/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_face_alone/20261023_150042_7b97edcb/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_face_alone/20261023_150042_7b97edcb/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_face_alone/20261023_150042_7b97edcb/pr.png) |
 
 ---
 
-### Model: `cnn_gru_view_physio_all`
-- **Category:** Tier 1/2 Deep & GRL | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.35 (Macro F1 = **0.5933**, Accuracy = 0.6126, Stress F1 = 0.5046)
-- **Default Threshold (0.50):** Macro F1 = 0.5927, Accuracy = 0.6227, Stress F1 = 0.4823
-- **ROC AUC:** 0.6045 | **PR AUC:** 0.4374
-- **Hyperparameters:** `{"model_type": "cnn_gru", "hidden_dim": 64, "use_grl": false, "lambda_adv": 0.0, "epochs": 25, "optimizer": "AdamW", "lr": 0.002}`
-- **Run Artifacts Path:** `models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/`
+### Model: `xgboost_view_face_voice`
+- **Category:** Tier 0 Classical | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.65 (Macro F1 = **0.5305**, Accuracy = 0.5606, Stress F1 = 0.6495)
+- **Default Threshold (0.50):** Macro F1 = 0.4853, Accuracy = 0.6038, Stress F1 = 0.7322
+- **ROC AUC:** 0.5497 | **PR AUC:** 0.7199
+- **Hyperparameters:** `{"model_type": "xgboost", "params": "{'objective': 'binary:logistic', 'base_score': None, 'booster': None, 'callbacks': None, 'colsample_bylevel': None, 'colsample_bynode': None, 'colsample_bytree': None, 'device': None, 'early_stopping_rounds': None, 'enable_categorical': True, 'eval_metric': 'logloss', 'feature_types': None, 'feature_weights': None, 'gamma': None, 'grow_policy': None, 'importance_type': None, 'interaction_constraints': None, 'learning_rate': 0.05, 'max_bin': None, 'max_cat_threshold': None, 'max_cat_to_onehot': None, 'max_delta_step': None, 'max_depth': 4, 'max_leaves': None, 'min_child_weight': None, 'missing': nan, 'monotone_constraints': None, 'multi_strategy': None, 'n_estimators': 100, 'n_jobs': -1, 'num_parallel_tree': None, 'random_state': 42, 'reg_alpha': None, 'reg_lambda': None, 'sampling_method': None, 'scale_pos_weight': 0.44921875, 'subsample': None, 'tree_method': None, 'validate_parameters': None, 'verbosity': None}"}`
+- **Run Artifacts Path:** `models/xgboost_view_face_voice/20261023_150312_e7ac1a46/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_face_voice/20261023_150312_e7ac1a46/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_face_voice/20261023_150312_e7ac1a46/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_face_voice/20261023_150312_e7ac1a46/pr.png) |
 
 ---
 
-### Model: `gru_view_physio_all`
-- **Category:** Tier 1/2 Deep & GRL | **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
-- **Optimal Threshold:** 0.10 (Macro F1 = **0.5775**, Accuracy = 0.5947, Stress F1 = 0.4924)
-- **Default Threshold (0.50):** Macro F1 = 0.5701, Accuracy = 0.6019, Stress F1 = 0.4532
-- **ROC AUC:** 0.5969 | **PR AUC:** 0.4407
-- **Hyperparameters:** `{"model_type": "gru", "hidden_dim": 64, "use_grl": false, "lambda_adv": 0.0, "epochs": 25, "optimizer": "AdamW", "lr": 0.002}`
-- **Run Artifacts Path:** `models/gru_view_physio_all/20261023_140910_f35d593d/`
+### Model: `xgboost_view_voice_alone`
+- **Category:** Tier 0 Classical | **View:** `view_voice_alone` | **Subjects:** 54 | **Windows:** 378 | **Features:** 140
+- **Optimal Threshold:** 0.60 (Macro F1 = **0.5323**, Accuracy = 0.5741, Stress F1 = 0.6721)
+- **Default Threshold (0.50):** Macro F1 = 0.5026, Accuracy = 0.5873, Stress F1 = 0.7079
+- **ROC AUC:** 0.5456 | **PR AUC:** 0.7414
+- **Hyperparameters:** `{"model_type": "xgboost", "params": "{'objective': 'binary:logistic', 'base_score': None, 'booster': None, 'callbacks': None, 'colsample_bylevel': None, 'colsample_bynode': None, 'colsample_bytree': None, 'device': None, 'early_stopping_rounds': None, 'enable_categorical': True, 'eval_metric': 'logloss', 'feature_types': None, 'feature_weights': None, 'gamma': None, 'grow_policy': None, 'importance_type': None, 'interaction_constraints': None, 'learning_rate': 0.05, 'max_bin': None, 'max_cat_threshold': None, 'max_cat_to_onehot': None, 'max_delta_step': None, 'max_depth': 4, 'max_leaves': None, 'min_child_weight': None, 'missing': nan, 'monotone_constraints': None, 'multi_strategy': None, 'n_estimators': 100, 'n_jobs': -1, 'num_parallel_tree': None, 'random_state': 42, 'reg_alpha': None, 'reg_lambda': None, 'sampling_method': None, 'scale_pos_weight': 0.4372623574144487, 'subsample': None, 'tree_method': None, 'validate_parameters': None, 'verbosity': None}"}`
+- **Run Artifacts Path:** `models/xgboost_view_voice_alone/20261023_150228_925bdaff/`
 
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
-| ![Confusion Matrix](file:///e:/StressProject/phase2/models/gru_view_physio_all/20261023_140910_f35d593d/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/gru_view_physio_all/20261023_140910_f35d593d/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/gru_view_physio_all/20261023_140910_f35d593d/pr.png) |
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_voice_alone/20261023_150228_925bdaff/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_voice_alone/20261023_150228_925bdaff/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_voice_alone/20261023_150228_925bdaff/pr.png) |
+
+---
+
+### Model: `cnn_gru_grl_view_face_alone`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.40 (Macro F1 = **0.5487**, Accuracy = 0.5550, Stress F1 = 0.6021)
+- **Default Threshold (0.50):** Macro F1 = 0.5422, Accuracy = 0.5450, Stress F1 = 0.5781
+- **ROC AUC:** 0.5553 | **PR AUC:** 0.5787
+- **Hyperparameters:** `{"model_type": "cnn_gru_grl", "epochs": 15, "lr": 0.001, "lambda_adv": 0.02}`
+- **Run Artifacts Path:** `models/cnn_gru_grl_view_face_alone/20261023_150217_2e2b63d1/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_face_alone/20261023_150217_2e2b63d1/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_face_alone/20261023_150217_2e2b63d1/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_face_alone/20261023_150217_2e2b63d1/pr.png) |
+
+---
+
+### Model: `cnn_gru_grl_view_face_voice`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.50 (Macro F1 = **0.5510**, Accuracy = 0.6442, Stress F1 = 0.7556)
+- **Default Threshold (0.50):** Macro F1 = 0.5510, Accuracy = 0.6442, Stress F1 = 0.7556
+- **ROC AUC:** 0.5629 | **PR AUC:** 0.7401
+- **Hyperparameters:** `{"model_type": "cnn_gru_grl", "epochs": 15, "lr": 0.001, "lambda_adv": 0.02}`
+- **Run Artifacts Path:** `models/cnn_gru_grl_view_face_voice/20261023_150411_5a4285da/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_face_voice/20261023_150411_5a4285da/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_face_voice/20261023_150411_5a4285da/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_face_voice/20261023_150411_5a4285da/pr.png) |
+
+---
+
+### Model: `cnn_gru_grl_view_voice_alone`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_voice_alone` | **Subjects:** 54 | **Windows:** 378 | **Features:** 140
+- **Optimal Threshold:** 0.70 (Macro F1 = **0.5313**, Accuracy = 0.6032, Stress F1 = 0.7148)
+- **Default Threshold (0.50):** Macro F1 = 0.5009, Accuracy = 0.6243, Stress F1 = 0.7491
+- **ROC AUC:** 0.5418 | **PR AUC:** 0.7365
+- **Hyperparameters:** `{"model_type": "cnn_gru_grl", "epochs": 15, "lr": 0.001, "lambda_adv": 0.02}`
+- **Run Artifacts Path:** `models/cnn_gru_grl_view_voice_alone/20261023_150253_62b16138/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_voice_alone/20261023_150253_62b16138/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_voice_alone/20261023_150253_62b16138/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_voice_alone/20261023_150253_62b16138/pr.png) |
+
+---
+
+### Model: `cnn_gru_view_face_alone`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.40 (Macro F1 = **0.6009**, Accuracy = 0.6050, Stress F1 = 0.6415)
+- **Default Threshold (0.50):** Macro F1 = 0.5887, Accuracy = 0.5900, Stress F1 = 0.6120
+- **ROC AUC:** 0.6104 | **PR AUC:** 0.6172
+- **Hyperparameters:** `{"model_type": "cnn_gru", "epochs": 15, "lr": 0.001, "lambda_adv": null}`
+- **Run Artifacts Path:** `models/cnn_gru_view_face_alone/20261023_150140_846470c7/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_view_face_alone/20261023_150140_846470c7/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_face_alone/20261023_150140_846470c7/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_face_alone/20261023_150140_846470c7/pr.png) |
+
+---
+
+### Model: `cnn_gru_view_face_voice`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.65 (Macro F1 = **0.5673**, Accuracy = 0.6280, Stress F1 = 0.7294)
+- **Default Threshold (0.50):** Macro F1 = 0.5453, Accuracy = 0.6226, Stress F1 = 0.7328
+- **ROC AUC:** 0.5421 | **PR AUC:** 0.7302
+- **Hyperparameters:** `{"model_type": "cnn_gru", "epochs": 15, "lr": 0.001, "lambda_adv": null}`
+- **Run Artifacts Path:** `models/cnn_gru_view_face_voice/20261023_150347_7c094a01/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_view_face_voice/20261023_150347_7c094a01/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_face_voice/20261023_150347_7c094a01/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_face_voice/20261023_150347_7c094a01/pr.png) |
+
+---
+
+### Model: `gru_view_face_alone`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_face_alone` | **Subjects:** 55 | **Windows:** 600 | **Features:** 84
+- **Optimal Threshold:** 0.55 (Macro F1 = **0.5912**, Accuracy = 0.5917, Stress F1 = 0.6055)
+- **Default Threshold (0.50):** Macro F1 = 0.5900, Accuracy = 0.5933, Stress F1 = 0.6269
+- **ROC AUC:** 0.6267 | **PR AUC:** 0.6256
+- **Hyperparameters:** `{"model_type": "gru", "epochs": 15, "lr": 0.001, "lambda_adv": null}`
+- **Run Artifacts Path:** `models/gru_view_face_alone/20261023_150110_43606050/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/gru_view_face_alone/20261023_150110_43606050/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/gru_view_face_alone/20261023_150110_43606050/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/gru_view_face_alone/20261023_150110_43606050/pr.png) |
+
+---
+
+### Model: `gru_view_face_voice`
+- **Category:** Tier 1/2 Deep & GRL | **View:** `view_face_voice` | **Subjects:** 53 | **Windows:** 371 | **Features:** 224
+- **Optimal Threshold:** 0.75 (Macro F1 = **0.5579**, Accuracy = 0.6065, Stress F1 = 0.7045)
+- **Default Threshold (0.50):** Macro F1 = 0.5178, Accuracy = 0.6226, Stress F1 = 0.7426
+- **ROC AUC:** 0.5408 | **PR AUC:** 0.7288
+- **Hyperparameters:** `{"model_type": "gru", "epochs": 15, "lr": 0.001, "lambda_adv": null}`
+- **Run Artifacts Path:** `models/gru_view_face_voice/20261023_150330_bb776fad/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/gru_view_face_voice/20261023_150330_bb776fad/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/gru_view_face_voice/20261023_150330_bb776fad/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/gru_view_face_voice/20261023_150330_bb776fad/pr.png) |
 
 ---
