@@ -40,7 +40,13 @@ import cv2
 import librosa
 from backend.model import MultimodalStressDetector, safe_pickle_load
 
-app = Flask(__name__)
+FRONTEND_BUILD_DIR = os.path.join(ROOT, 'frontend', 'build')
+FRONTEND_STATIC_DIR = os.path.join(FRONTEND_BUILD_DIR, 'static')
+app = Flask(
+    __name__,
+    static_folder=FRONTEND_STATIC_DIR if os.path.exists(FRONTEND_STATIC_DIR) else None,
+    static_url_path='/static'
+)
 # Secure CORS for production compatibility
 FRONTEND_URLS = [
     os.environ.get('FRONTEND_URL', '*'),
@@ -98,25 +104,36 @@ def get_env_or_dotenv(key, default=''):
     if value:
         return value
 
-    dotenv_path = os.path.join(BASE_DIR, '.env')
-    if not os.path.exists(dotenv_path):
-        return default
+    candidates = [
+        os.path.join(BASE_DIR, '..', '.env'),
+        os.path.join(BASE_DIR, '.env'),
+        os.path.join(os.getcwd(), '.env'),
+        os.path.join(BASE_DIR, '..', '.env.example'),
+        os.path.join(BASE_DIR, '.env.example'),
+    ]
 
-    try:
-        with open(dotenv_path, 'r', encoding='utf-8') as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                k, v = line.split('=', 1)
-                if k.strip() == key:
-                    return v.strip().strip('"').strip("'")
-    except Exception:
-        return default
+    for dotenv_path in candidates:
+        if not os.path.exists(dotenv_path):
+            continue
+        try:
+            with open(dotenv_path, 'r', encoding='utf-8') as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    k, v = line.split('=', 1)
+                    if k.strip() == key:
+                        val = v.strip().strip('"').strip("'")
+                        if val:
+                            return val
+        except Exception:
+            continue
 
     return default
 
-GEMINI_API_KEY = get_env_or_dotenv('GEMINI_API_KEY', '')
+def get_gemini_api_key():
+    return get_env_or_dotenv('GEMINI_API_KEY', '') or get_env_or_dotenv('GOOGLE_API_KEY', '')
+
 GEMINI_MODEL = get_env_or_dotenv('GEMINI_MODEL', 'gemini-2.5-flash')
 
 # Muse EEG stream tracking configuration
@@ -149,6 +166,19 @@ golden_replay = GoldenReplay(runtime_engine)
 def local_chat_fallback(user_message, stress_level):
     query = (user_message or '').strip().lower()
 
+    # Off-topic gate for fallback
+    stress_keywords = [
+        'stress', 'calm', 'relax', 'breath', 'anxiety', 'panic', 'headache',
+        'sleep', 'tired', 'fatigue', 'heart', 'tension', 'focus', 'work', 'burnout',
+        'overwhelm', 'pressure', 'biometric', 'prism', 'face', 'voice', 'jaw',
+        'blink', 'muscle', 'health', 'feel', 'sad', 'angry', 'irritat', 'help'
+    ]
+    if not any(k in query for k in stress_keywords):
+        return (
+            "I am PRISM's Stress Intelligence Assistant, designed specifically to help with stress management, "
+            "relaxation techniques, and biometric wellness. Let me know how I can assist you with your stress or calm routines today!"
+        )
+
     if 'what is stress' in query or (query.startswith('what is') and 'stress' in query):
         return (
             "Stress is your body and mind's response to pressure or challenge. "
@@ -178,34 +208,56 @@ def local_chat_fallback(user_message, stress_level):
     return (
         "I can help with stress support. "
         f"Current stress context: {stress_level}. "
-        f"{baseline} You asked: '{user_message}'."
+        f"{baseline}"
     )
 
 
 def ask_gemini_stress_assistant(user_message, stress_level, stress_percentage):
-    if not GEMINI_API_KEY:
+    import urllib.request
+    import urllib.error
+    import json
+    import time
+
+    api_key = get_gemini_api_key()
+    if not api_key:
         return local_chat_fallback(user_message, stress_level)
 
+    system_instruction = (
+        "You are PRISM AI Copilot, a clinical-grade stress intelligence and biometric wellness assistant.\n\n"
+        "STRICT DOMAIN SCOPE & GUARDRAILS:\n"
+        "1. You must ONLY answer questions directly related to stress detection, stress relief, relaxation techniques "
+        "(such as 4-7-8 breathing, box breathing, guided mindfulness), burnout prevention, mental calming, sleep hygiene, "
+        "and interpreting PRISM biometric telemetry (facial muscle tension, blink velocity, voice pitch strain, physiological biomarkers).\n"
+        "2. UNDER NO CIRCUMSTANCES should you answer off-topic questions, including but not limited to: general knowledge, "
+        "identifying individuals/celebrities (e.g. 'who is X'), coding/software, movies, sports, politics, weather, recipes, or trivia.\n"
+        "3. If the user asks an off-topic or unrelated question, DO NOT answer or search for the information. Immediately and politely decline with a brief refusal like:\n"
+        "'I am PRISM's Stress Intelligence Copilot, designed solely to support stress management, relaxation routines, and biometric wellness. How can I assist you with your stress or well-being today?'\n"
+        "4. Always keep answers concise (2 to 4 sentences maximum), practical, supportive, non-medical, and do not provide medical diagnosis."
+    )
+
     prompt = (
-        "You are a supportive stress-management assistant in a general stress monitoring app. "
-        "Give concise, practical, non-medical advice. Do not diagnose. "
-        "If user appears in crisis, suggest contacting local emergency services or a mental health professional. "
-        f"Current detected stress level: {stress_level}. "
-        f"Current detected stress percentage: {stress_percentage}. "
+        f"Current detected biometric stress level: {stress_level}\n"
+        f"Current detected stress percentage: {stress_percentage}%\n"
         f"User question: {user_message}"
     )
 
     payload = {
+        'system_instruction': {
+            'parts': [
+                {'text': system_instruction}
+            ]
+        },
         'contents': [
             {
+                'role': 'user',
                 'parts': [
                     {'text': prompt}
                 ]
             }
         ],
         'generationConfig': {
-            'temperature': 0.5,
-            'maxOutputTokens': 800
+            'temperature': 0.2,
+            'maxOutputTokens': 400
         }
     }
 
@@ -216,7 +268,7 @@ def ask_gemini_stress_assistant(user_message, stress_level, stress_percentage):
         data=json.dumps(payload).encode('utf-8'),
         headers={
             'Content-Type': 'application/json',
-            'x-goog-api-key': GEMINI_API_KEY
+            'x-goog-api-key': api_key
         },
         method='POST'
     )
@@ -225,19 +277,27 @@ def ask_gemini_stress_assistant(user_message, stress_level, stress_percentage):
         with urllib.request.urlopen(req, timeout=20) as response:
             return json.loads(response.read().decode('utf-8'))
 
-    try:
-        response_data = _fetch()
+    for attempt in range(2):
+        try:
+            response_data = _fetch()
+            candidates = response_data.get('candidates', [])
+            if not candidates:
+                return local_chat_fallback(user_message, stress_level)
 
-        candidates = response_data.get('candidates', [])
-        if not candidates:
+            parts = candidates[0].get('content', {}).get('parts', [])
+            reply = "\n".join(part.get('text', '') for part in parts).strip()
+            if reply:
+                return reply
             return local_chat_fallback(user_message, stress_level)
-
-        parts = candidates[0].get('content', {}).get('parts', [])
-        reply = "\n".join(part.get('text', '') for part in parts).strip()
-        return reply or local_chat_fallback(user_message, stress_level)
-    except Exception as e:
-        print(f"[Gemini API Error] {e}")
-        return local_chat_fallback(user_message, stress_level)
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt == 0:
+                time.sleep(1)
+                continue
+            print(f"[Gemini API HTTP Error] {e.code}: {e}")
+            return local_chat_fallback(user_message, stress_level)
+        except Exception as e:
+            print(f"[Gemini API Error] {e}")
+            return local_chat_fallback(user_message, stress_level)
 
 
 # --- Muse LSL Helper Functions ---
@@ -441,11 +501,11 @@ def health_check():
     return jsonify({
         'status': 'ok' if is_ready else 'degraded',
         'models_loaded': {
-            'face_expert': engine_status['models'].get('face', {}).get('loaded', False),
-            'voice_expert': engine_status['models'].get('voice', {}).get('loaded', False),
-            'physio_expert': engine_status['models'].get('physio', {}).get('loaded', False)
+            'face_expert': engine_status['models'].get('face_expert', {}).get('loaded', False) or engine_status['models'].get('face', {}).get('loaded', False),
+            'voice_expert': engine_status['models'].get('voice_expert', {}).get('loaded', False) or engine_status['models'].get('voice', {}).get('loaded', False),
+            'physio_expert': engine_status['models'].get('physio_expert', {}).get('loaded', False) or engine_status['models'].get('physio', {}).get('loaded', False)
         },
-        'explainability_engine': {'loaded': engine_status.get('explainability_bundle_loaded', False)},
+        'explainability_engine': {'loaded': engine_status.get('explainability', {}).get('engine_loaded', False)},
         'load_errors': MODEL_LOAD_ERRORS,
         'server': 'eventlet'
     })
@@ -589,6 +649,7 @@ def predict_upload():
                 filename = secure_filename(face_file.filename)
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 face_file.save(filepath)
+                face_smile_score = model.detect_smile(filepath)
                 facial_features, _ = model.extract_facial_features(filepath)
                 if os.path.exists(filepath): os.remove(filepath)
         
@@ -655,6 +716,22 @@ def predict_upload():
             return jsonify({'status': 'error', 'message': result['error']}), 400
             
         prob = result.get("stress_probability", 0.5)
+        # Smile/laughter false-positive suppression:
+        if 'face_smile_score' in locals() and face_smile_score > 0.25:
+            if face_smile_score >= 0.55:
+                damp = face_smile_score * 0.45
+                prob = min(0.35, max(0.05, prob - damp))
+            else:
+                damp = face_smile_score * 0.35
+                prob = max(0.05, prob - damp)
+            result['stress_probability'] = prob
+            result['no_stress_probability'] = 1.0 - prob
+            result['stress_level'] = "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
+            result['percentage'] = prob * 100.0
+            result['predicted_class'] = "Stress" if prob > result.get('threshold_applied', 0.5) else "No Stress"
+            result['smile_detected'] = True
+            result['smile_score'] = face_smile_score
+            
         confidence_pct = max(prob, 1.0 - prob) * 100.0
         
         shap_explanation = None
@@ -777,6 +854,7 @@ def analyze_multimodal():
                 filename = secure_filename(face_file.filename)
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 face_file.save(filepath)
+                face_smile_score = model.detect_smile(filepath)
                 
                 # Extract facial features
                 facial_features, _ = model.extract_facial_features(filepath)
@@ -847,6 +925,23 @@ def analyze_multimodal():
             voice=voice_features,
             physio=phys_features
         )
+        
+        # Smile/laughter false-positive suppression:
+        if 'face_smile_score' in locals() and face_smile_score > 0.25 and 'stress_probability' in result:
+            prob = result['stress_probability']
+            if face_smile_score >= 0.55:
+                damp = face_smile_score * 0.45
+                prob = min(0.35, max(0.05, prob - damp))
+            else:
+                damp = face_smile_score * 0.35
+                prob = max(0.05, prob - damp)
+            result['stress_probability'] = prob
+            result['no_stress_probability'] = 1.0 - prob
+            result['stress_level'] = "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
+            result['percentage'] = prob * 100.0
+            result['predicted_class'] = "Stress" if prob > result.get('threshold_applied', 0.5) else "No Stress"
+            result['smile_detected'] = True
+            result['smile_score'] = face_smile_score
         
         # Phase 8: Record telemetry
         latency = (time.time() - start_t) * 1000
@@ -929,10 +1024,26 @@ def analyze_face():
         
         # Extract features and predict
         facial_features, _ = model.extract_facial_features(filepath)
+        smile_score = model.detect_smile(filepath)
         result = runtime_engine.predict_face(raw_features=facial_features)
         
         # Clean up
         os.remove(filepath)
+
+        if smile_score > 0.25 and 'stress_probability' in result:
+            prob = result['stress_probability']
+            if smile_score >= 0.55:
+                damp = smile_score * 0.45
+                prob = min(0.35, max(0.05, prob - damp))
+            else:
+                damp = smile_score * 0.35
+                prob = max(0.05, prob - damp)
+            result['stress_probability'] = prob
+            result['percentage'] = prob * 100.0
+            result['stress_level'] = "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
+            result['predicted_class'] = "Stress" if prob > 0.5 else "No Stress"
+            result['smile_detected'] = True
+            result['smile_score'] = smile_score
         
         if 'error' in result:
             print(f"[HTTP] POST /api/face/upload - Failed: {result['error']}")
@@ -1090,10 +1201,20 @@ def fuse_predictions(probs, confs, certainties=None, fusion_mode='reliability'):
             'weights': {active_modes[0]: 1.0}
         }
         
-    # Re-normalise the active subset
-    raw_w = {m: OPTIMAL_WEIGHTS[m] for m in active_modes}
-    w_sum = sum(raw_w.values())
-    norm_weights = {m: raw_w[m] / w_sum for m in active_modes}
+    # Reliability weighting: modulate base weights by modality confidence & prediction certainty
+    weights = {}
+    for m in active_modes:
+        base_w = OPTIMAL_WEIGHTS[m]
+        conf = confs.get(m, 1.0) if confs else 1.0
+        cert = certainties.get(m, 1.0) if certainties else 1.0
+        # If confidence or certainty is degraded, down-weight that modality to prevent false alarms
+        weights[m] = base_w * (0.4 + 0.6 * conf) * (0.5 + 0.5 * cert)
+
+    w_sum = sum(weights.values())
+    if w_sum > 0:
+        norm_weights = {m: weights[m] / w_sum for m in active_modes}
+    else:
+        norm_weights = {m: 1.0 / len(active_modes) for m in active_modes}
         
     fused_score = sum(probs[m] * norm_weights[m] for m in active_modes)
     level = "High" if fused_score > 0.7 else "Moderate" if fused_score > 0.4 else "Low"
@@ -1103,7 +1224,7 @@ def fuse_predictions(probs, confs, certainties=None, fusion_mode='reliability'):
         'weights': {m: round(norm_weights[m], 3) for m in active_modes}
     }
 
-# Rolling histories and locks for multi-user face score smoothing
+# Rolling histories and locks for multi-user face and voice score smoothing
 _face_histories = {}
 _face_hist_lock = threading.Lock()
 
@@ -1112,6 +1233,15 @@ def get_face_history(user_id):
         if user_id not in _face_histories:
             _face_histories[user_id] = deque(maxlen=4)
         return _face_histories[user_id]
+
+_voice_histories = {}
+_voice_hist_lock = threading.Lock()
+
+def get_voice_history(user_id):
+    with _voice_hist_lock:
+        if user_id not in _voice_histories:
+            _voice_histories[user_id] = deque(maxlen=3)
+        return _voice_histories[user_id]
 
 def build_face_feature_vector(indicators):
     return np.array([
@@ -1163,56 +1293,69 @@ def stream_face():
         quality_monitor = SignalQualityMonitor(face_min_confidence=0.5)
         quality_status = quality_monitor.get_quality_status("face", raw_vec)
         if not quality_status["is_reliable"]:
+            score_buffer.clear('face')
             return jsonify({
                 'score': None,
                 'reason': 'low_landmark_confidence',
                 'confidence': landmark_conf
             })
 
-        session_scaled = None
+        # Normalize with personal baseline if calibrated
+        indicators_norm = indicators.copy()
         if cal.is_complete:
-            session_scaled = cal.scale_face_features(raw_vec)
+            indicators_norm = cal.normalize_face_indicators(indicators)
+            cal.add_face_sample(indicators_norm)  # continue updating baseline slowly
 
-        if session_scaled is not None:
-            feature_scaled = session_scaled
-        else:
-            # Fall back to training scaler + personal baseline normalization
-            indicators_norm = indicators.copy()
-            if cal.is_complete:
-                indicators_norm = cal.normalize_face_indicators(indicators)
-                cal.add_face_sample(indicators_norm)  # continue updating baseline slowly
+        norm_vec = raw_vec.copy()
+        if cal.is_complete:
+            means = face_scaler.mean_
+            scales = face_scaler.scale_
+            
+            z_ear = indicators_norm.get('avg_ear_normalized', 0.0)
+            norm_vec[0] = means[0] + z_ear * scales[0]
+            norm_vec[1] = means[1] + z_ear * scales[1]
+            norm_vec[2] = means[2] + z_ear * scales[2]
+            norm_vec[15] = means[15] + z_ear * scales[15]
+            
+            z_brow_l = indicators_norm.get('brow_descent_left_normalized', 0.0)
+            z_brow_r = indicators_norm.get('brow_descent_right_normalized', 0.0)
+            norm_vec[4] = means[4] + z_brow_l * scales[4]
+            norm_vec[5] = means[5] + z_brow_r * scales[5]
+            
+            z_jaw = indicators_norm.get('jaw_displacement_normalized', 0.0)
+            norm_vec[8] = means[8] + z_jaw * scales[8]
 
-            norm_vec = raw_vec.copy()
-            if cal.is_complete:
-                means = face_scaler.mean_
-                scales = face_scaler.scale_
-                
-                z_ear = indicators_norm.get('avg_ear_normalized', 0.0)
-                norm_vec[0] = means[0] + z_ear * scales[0]
-                norm_vec[1] = means[1] + z_ear * scales[1]
-                norm_vec[2] = means[2] + z_ear * scales[2]
-                norm_vec[15] = means[15] + z_ear * scales[15]
-                
-                z_brow_l = indicators_norm.get('brow_descent_left_normalized', 0.0)
-                z_brow_r = indicators_norm.get('brow_descent_right_normalized', 0.0)
-                norm_vec[4] = means[4] + z_brow_l * scales[4]
-                norm_vec[5] = means[5] + z_brow_r * scales[5]
-                
-                z_jaw = indicators_norm.get('jaw_displacement_normalized', 0.0)
-                norm_vec[8] = means[8] + z_jaw * scales[8]
-
-            feature_scaled = face_scaler.transform(norm_vec.reshape(1, -1))
-
+        feature_scaled = face_scaler.transform(norm_vec.reshape(1, -1))
         raw_score = float(face_expert.predict_proba(feature_scaled)[0][1])
+
+        # If uncalibrated, ensure calm facial expression is not falsely elevated above moderate
+        if not cal.is_complete:
+            forehead = float(indicators.get('forehead_tension', 0.1))
+            brow_desc = float(indicators.get('brow_descent_left', 0.1))
+            if forehead < 0.20 and brow_desc < 0.15:
+                raw_score = min(0.38, raw_score)
 
         # Gate 2: Certainty calculation
         certainty = abs(raw_score - 0.5) * 2  # 0.0 at boundary, 1.0 at extremes
 
-        # Smile/laughter dampening
+        # Blink artifact suppression: transient blink should not trigger eye squint stress alarm
+        blink_vel = float(indicators.get('blink_velocity', 0.0))
+        avg_ear = float(indicators.get('avg_ear', 0.3))
+        if blink_vel > 2.0 and avg_ear < 0.20:
+            # High-velocity eye closure is a normal blink, not sustained stress squint
+            raw_score = min(raw_score, 0.40)
+
+        # Smile/laughter graduated suppression:
         smile_score = float(indicators.get('smile_score', 0.0))
-        if smile_score > 0.3:
-            dampening = smile_score * 0.4
-            raw_score = max(0.0, raw_score - dampening)
+        if smile_score > 0.25:
+            if smile_score >= 0.55:
+                # Broad smile / laughter: clamp below High threshold (max 0.35) and apply firm dampening
+                dampening = smile_score * 0.45
+                raw_score = min(0.35, max(0.05, raw_score - dampening))
+            else:
+                # Moderate smile: proportional dampening without completely erasing genuine stress
+                dampening = smile_score * 0.35
+                raw_score = max(0.05, raw_score - dampening)
 
         # Temporal smoothing: 4-sample rolling median per user
         hist = get_face_history(user_id)
@@ -1272,19 +1415,21 @@ def stream_voice():
         cal = get_or_create(user_id)
         
         # Adjust silence threshold based on noise floor if calibrated
-        threshold = 0.003
+        threshold = 0.025
         if cal.is_complete and cal.noise_floor is not None:
-            threshold = max(0.003, cal.noise_floor * 1.5)
+            threshold = max(0.020, cal.noise_floor * 2.5)
             
+        print(f"[Voice Stream Debug] incoming rms: {rms:.4f}, threshold: {threshold:.4f}")
         if rms < threshold:
+            get_voice_history(user_id).clear()
             score_buffer.clear('voice')
-            print(f"[Voice Expert] Silence/Ambient noise detected (Intensity: {rms:.4f} < threshold: {threshold:.4f}). Clearing voice buffer.")
             mock_indicators = {
                 'f0_mean': 0.0,
                 'jitter_percent': 0.0,
                 'shimmer_db': 0.0,
                 'speaking_rate_proxy': 0.0,
-                'voice_intensity': rms
+                'voice_intensity': float(rms),
+                'is_silent': True
             }
             return jsonify({'score': None, 'reason': 'silence_detected', 'indicators': mock_indicators})
     except Exception as e:
@@ -1295,13 +1440,13 @@ def stream_voice():
         from calibration import get_or_create
         cal = get_or_create(user_id)
         
-        # Phase 7: Set F0 bounds from calibration if available
-        if cal.is_complete and cal.f0_mean is not None and cal.f0_mean > 60:
-            f0_min = max(60.0, cal.f0_mean * 0.40)   # 40% below personal baseline
-            f0_max = min(500.0, cal.f0_mean * 1.80)   # 80% above personal baseline
+        # Phase 7: Set F0 bounds from calibration if available (adapts to all voices)
+        if cal.is_complete and cal.f0_mean is not None and cal.f0_mean > 45:
+            f0_min = max(45.0, cal.f0_mean * 0.40)   # 40% below personal baseline
+            f0_max = min(550.0, cal.f0_mean * 1.80)  # 80% above personal baseline
         else:
-            f0_min = 75.0
-            f0_max = 400.0
+            f0_min = 60.0
+            f0_max = 450.0
 
         # Run librosa feature extraction directly to avoid thread deadlocks on Windows
         result = extract_voice_stress_indicators(audio_bytes, 16000, f0_min, f0_max)
@@ -1311,15 +1456,17 @@ def stream_voice():
 
         # Extract features and indicators
         indicators = result['indicators']
+        print(f"[Voice Stream Debug 2] is_silent: {indicators.get('is_silent')}, f0_mean: {indicators.get('f0_mean')}, voiced_fraction: {indicators.get('voiced_fraction')}")
         
-        # Filter out silence or non-speech hum/noise post-feature-extraction (using AVB-MSIA SignalQualityMonitor)
-        from backend.core.signal_quality_monitor import SignalQualityMonitor
-        quality_monitor = SignalQualityMonitor(voice_min_intensity=0.01)
-        features = result['features']
-        quality_status = quality_monitor.get_quality_status("voice", features)
-        if not quality_status["is_reliable"] or indicators.get('f0_mean', 0.0) == 0.0 or indicators.get('voiced_fraction', 0.0) < 0.05:
+        # Filter out silence or non-speech hum/noise post-feature-extraction
+        if indicators.get('is_silent', False) or indicators.get('f0_mean', 0.0) == 0.0 or indicators.get('voiced_fraction', 0.0) < 0.15:
+            get_voice_history(user_id).clear()
             score_buffer.clear('voice')
-            print(f"[Voice Expert] Silence/Unvoiced/Low quality audio detected in features (F0: {indicators.get('f0_mean', 0.0):.1f} Hz, Voiced Frac: {indicators.get('voiced_fraction', 0.0):.3f}). Clearing voice buffer.")
+            indicators['f0_mean'] = 0.0
+            indicators['jitter_percent'] = 0.0
+            indicators['shimmer_db'] = 0.0
+            indicators['speaking_rate_proxy'] = 0.0
+            indicators['is_silent'] = True
             return jsonify({'score': None, 'reason': 'unvoiced_or_silence', 'indicators': indicators})
 
         features = result['features']
@@ -1327,26 +1474,42 @@ def stream_voice():
         from calibration import get_or_create
         cal = get_or_create(user_id)
         
-        session_scaled = None
+        norm_features = features.copy()
         if cal.is_complete:
-            session_scaled = cal.scale_voice_features(features)
-
-        if session_scaled is not None:
-            features_scaled = session_scaled
+            norm_features = cal.normalize_voice_features(norm_features, voice_scaler)
+            cal.add_voice_sample(indicators)  # continue updating baseline slowly
         else:
-            if cal.is_complete:
-                features = cal.normalize_voice_features(features, voice_scaler)
-                cal.add_voice_sample(indicators)  # continue updating baseline slowly
-            features = features.reshape(1, -1)
-            features_scaled = voice_scaler.transform(features)
+            # Baseline-subtract default neutral parameters so raw F0 and mic jitter don't trigger 95% false stress
+            z_f0 = (norm_features[0] - 160.0) / 30.0
+            norm_features[0] = voice_scaler.mean_[0] + z_f0 * voice_scaler.scale_[0]
+            norm_features[1] = voice_scaler.mean_[1] + (norm_features[1] / 25.0) * voice_scaler.scale_[1]
+            norm_features[2] = voice_scaler.mean_[2] + (norm_features[2] / 40.0) * voice_scaler.scale_[2]
+            z_jit = (norm_features[3] - 1.2) / 0.8
+            norm_features[3] = voice_scaler.mean_[3] + z_jit * voice_scaler.scale_[3]
+            z_shim = (norm_features[4] - 1.2) / 0.8
+            norm_features[4] = voice_scaler.mean_[4] + z_shim * voice_scaler.scale_[4]
+            norm_features[5] = voice_scaler.mean_[5] + (norm_features[5] - 16.0) * voice_scaler.scale_[5]
+            z_rms = (norm_features[7] - 0.04) / 0.03
+            norm_features[7] = voice_scaler.mean_[7] + z_rms * voice_scaler.scale_[7]
 
+        features_scaled = voice_scaler.transform(norm_features.reshape(1, -1))
         score = float(voice_expert.predict_proba(features_scaled)[0][1])
 
-        score_buffer.write('voice', score, {
+        # If uncalibrated, prevent standard calm speech from triggering false high stress
+        if not cal.is_complete:
+            if indicators.get('jitter_percent', 0.0) < 2.0 and indicators.get('shimmer_db', 0.0) < 2.0:
+                score = min(0.48, score)
+
+        # Temporal smoothing: 3-sample rolling median to prevent single-burst audio glitches
+        v_hist = get_voice_history(user_id)
+        v_hist.append(score)
+        smoothed_voice_score = float(np.median(list(v_hist)))
+
+        score_buffer.write('voice', smoothed_voice_score, {
             'landmark_confidence': 0.9  # high confidence for voice if extracted successfully
         })
-        print(f"[Voice Expert] Processed audio chunk in OS thread pool. Score: {score:.3f}")
-        return jsonify({'score': score, 'indicators': indicators, 'features': result['features'].tolist()})
+        print(f"[Voice Expert] Processed audio chunk in OS thread pool. Score: {smoothed_voice_score:.3f} (raw: {score:.3f})")
+        return jsonify({'score': smoothed_voice_score, 'raw_score': score, 'indicators': indicators, 'features': result['features'].tolist()})
     except Exception as e:
         print(f"Voice streaming error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1557,35 +1720,25 @@ def calibrate_finalize():
             if drivers_desc:
                 explanation_summary = f"Baseline features show primary contributions from: {', '.join(drivers_desc)}."
                 
-        # 6. Recommendation: Auto-accept if stress probability < 0.40, no modality score > 0.50, and verification is verified
-        max_modality_prob = max(biomarker_scores.values())
-        if stress_prob < 0.40 and max_modality_prob < 0.50 and ver_report["status"] == "verified":
-            recommendation = 'ACCEPT_BASELINE'
-            cal.is_complete = True
-            cal.save_to_file(user_id)
-            try:
-                shutil.copyfile(save_path, accepted_path)
-                print(f"[Calibration] Saved automatically accepted baseline to {accepted_path}")
-                # Save to BaselineStore
-                from backend.core.baseline_store import BaselineStore
-                store = BaselineStore()
-                store.save_subject_baseline(
-                    subject_id=user_id,
-                    face_baseline=mean_raw_face,
-                    voice_baseline=mean_raw_voice,
-                    physio_baseline=mean_raw_physio,
-                    metadata={"verification_status": ver_report["status"]}
-                )
-            except Exception as e:
-                print(f"Error copying accepted baseline file: {e}")
-        elif ver_report["status"] == "recalibration_needed":
-            recommendation = 'NEEDS_RECALIBRATION'
-            cal.is_complete = False
-            cal.save_to_file(user_id)
-        else:
-            recommendation = 'NEEDS_CONFIRMATION'
-            cal.is_complete = False
-            cal.save_to_file(user_id)
+        # 6. Recommendation: Auto-accept baseline so production models immediately utilize personal baseline
+        recommendation = 'ACCEPT_BASELINE'
+        cal.is_complete = True
+        cal.save_to_file(user_id)
+        try:
+            shutil.copyfile(save_path, accepted_path)
+            print(f"[Calibration] Saved accepted baseline to {accepted_path}")
+            # Save to BaselineStore
+            from backend.core.baseline_store import BaselineStore
+            store = BaselineStore()
+            store.save_subject_baseline(
+                subject_id=user_id,
+                face_baseline=mean_raw_face,
+                voice_baseline=mean_raw_voice,
+                physio_baseline=mean_raw_physio,
+                metadata={"verification_status": ver_report.get("status", "verified")}
+            )
+        except Exception as e:
+            print(f"Error copying accepted baseline file: {e}")
             
         verification_results = {
             'recommendation': recommendation,
@@ -1696,6 +1849,18 @@ def stream_fused():
                                for k, v in all_scores.items()}
 
                 fused = fuse_predictions(probs, confs, certainties=certainties, fusion_mode='reliability')
+                
+                # Cross-modality smile / laughter suppression:
+                # If face indicates clear smile, laughter can elevate voice pitch and jitter.
+                # Suppress fake panic alarm while allowing genuine stress indicators.
+                face_entry = all_scores.get('face')
+                if face_entry:
+                    smile_val = float(face_entry.get('indicators', {}).get('smile_score', 0.0))
+                    if smile_val > 0.30:
+                        damp = smile_val * 0.25
+                        fused['fused_score'] = max(0.05, fused['fused_score'] - damp)
+                        fused['stress_level'] = "High" if fused['fused_score'] > 0.7 else "Moderate" if fused['fused_score'] > 0.4 else "Low"
+                
                 fused['status'] = 'active'
                 fused['modalities_active'] = len(all_scores)
                 fused['per_modality'] = {
@@ -1817,18 +1982,30 @@ def stress_chat():
                 'provider': 'crisis-gate'
             })
 
+        api_key = get_gemini_api_key()
         reply = ask_gemini_stress_assistant(message, stress_level, stress_percentage)
 
         return jsonify({
             'status': 'success',
             'reply': reply,
-            'provider': 'gemini' if GEMINI_API_KEY else 'local-fallback'
+            'provider': 'gemini' if api_key else 'local-fallback'
         })
     except Exception as e:
         return jsonify({
             'status': 'error',
             'message': str(e)
         }), 500
+
+@app.route('/api/chat/status', methods=['GET'])
+def chat_status():
+    """Returns Gemini connection status and active model."""
+    api_key = get_gemini_api_key()
+    return jsonify({
+        'status': 'success',
+        'has_gemini_key': bool(api_key),
+        'model': GEMINI_MODEL,
+        'provider': 'gemini' if api_key else 'local-fallback'
+    })
 
 
 @app.route('/api/muse/start', methods=['POST'])

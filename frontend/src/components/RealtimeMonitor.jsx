@@ -1,37 +1,165 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { API_BASE } from '../config';
 import FaceStream from './FaceStream';
 import WaveformRecorder from './WaveformRecorder';
 import CalibrationWizard from './CalibrationWizard';
 
+const API_BASE = (typeof window !== 'undefined' && window.location.port === '3000') ? 'http://127.0.0.1:5000' : '';
+
+const LEVEL_COLOR = { 
+  Low: 'var(--primary-color)',       // Dynamic theme primary color
+  Moderate: '#FF9800',  // Orange
+  High: '#F44336'       // Red
+};
+
+function IndicatorBar({ label, value, scale = 1.0, format, extra, valueColor }) {
+  const percent = Math.min(100, Math.max(0, (value / scale) * 100));
+  const barColor = valueColor || (percent > 75 ? '#F44336' : percent > 40 ? '#FF9800' : 'var(--primary-color)');
+  
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-color)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>{label}</span>
+          {extra}
+        </div>
+        <span style={{ fontWeight: 'bold', fontFamily: 'monospace', color: barColor }}>{format(value)}</span>
+      </div>
+      <div style={{ width: '100%', height: 6, background: 'var(--bar-bg)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ 
+          width: `${percent}%`, 
+          height: '100%', 
+          background: barColor, 
+          borderRadius: 3, 
+          transition: 'width 0.3s ease-out, background-color 0.3s ease' 
+        }} />
+      </div>
+    </div>
+  );
+}
+
+const faceParamDetails = {
+  jaw_displacement: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Distance between the nose tip and the chin, normalized by eye distance.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Measured using facial landmarks 4 (nose tip) and 152 (chin) normalized by 33 & 263 (eyes).<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Open and close your mouth, or speak. You will see the Jaw Displacement bar rise and fall.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress often causes an involuntary clenched jaw (reduced displacement) or jaw drops under sudden shock.
+    </div>
+  ),
+  jaw_width: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Width of the lower jaw, detecting masseter muscle contraction.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Horizontal distance between lower jaw landmarks 172 and 397 normalized by eye distance.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Clench your teeth tightly together. You will see the Jaw Width bar increase as the masseter muscles contract.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Teeth-clenching is a primary physical, involuntary reaction to stress, anger, and tension.
+    </div>
+  ),
+  blink_velocity: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> The speed at which you close and open your eyes.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Rate of change of the Eye Aspect Ratio (EAR) across consecutive frames.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Blink rapidly or hard. The Blink Velocity metric will spike.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress increases autonomic nervous system arousal, elevating blink velocity and frequency.
+    </div>
+  ),
+  brow_tension: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Downward contraction and pulling together of the eyebrows.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Distance from eyebrows to eyes normalized by face height.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Furrow your brows or frown. You'll see the Brow Tension bar rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Furrowing the brow is a universal indicator of concentration, anger, or distress.
+    </div>
+  ),
+  lip_compression: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Squeezing the lips tightly together, making them thin.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Vertical mouth gap divided by horizontal mouth width.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Press your lips tightly together into a thin line. Lip Compression bar will rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Lip compression is an involuntary subconscious cue for anxiety, holding back speech, or cognitive load.
+    </div>
+  ),
+  head_tilt: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Lateral head tilt angle and movement.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> The angle of the line connecting left and right eyes relative to the horizontal axis.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Tilt your head to the side. The Head Tilt degrees will increase.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Restlessness, frequent head adjustments, or rigid posture are correlated with discomfort and stress.
+    </div>
+  )
+};
+
+const voiceParamDetails = {
+  f0_mean: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Fundamental frequency (mean pitch) of your voice.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Autocorrelation of voiced audio frames restricted to calibrated pitch bounds.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak in a high-pitched voice, then a low-pitched voice. The Pitch Hz value will change.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Tension in laryngeal muscles from stress tightens the vocal cords, raising fundamental pitch.
+    </div>
+  ),
+  jitter_percent: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Micro-instability and cycle-to-cycle frequency variations of vocal vibrations.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Relative Average Perturbation (RAP) of pitch periods between consecutive frames.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak with a shaky, trembling voice, or whisper. You will see Jitter percent rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Physiological stress reduces laryngeal muscle stability, leading to higher jitter.
+    </div>
+  ),
+  shimmer_db: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Cycle-to-cycle variation in the amplitude (loudness) of the vocal fold vibration.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Average decibel amplitude deviation between adjacent voiced frames.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak with an unstable, trembling loudness. Shimmer will increase.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress causes irregular vocal fold closure, which makes loudness fluctuate microscopically.
+    </div>
+  ),
+  speaking_rate_proxy: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Speaking rate and breathiness proxy using zero-crossing rate.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Frequency of sign changes in the audio waveform over time.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak extremely fast, or blow air/sigh into the microphone. Speaking Rate bar will rise.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Agitation, panic, or anxiety increases speech rate and shallow breathiness, elevating ZCR.
+    </div>
+  ),
+  voice_intensity: (
+    <div>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• What it is:</span> Vocal loudness and energy.<br/>
+      <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>• Calculation:</span> Root-Mean-Square (RMS) energy of the audio chunk relative to calibrated noise threshold.<br/>
+      <span style={{ color: '#FF9800', fontWeight: 'bold' }}>• How to Test:</span> Speak loudly or shout, then whisper. Voice Intensity bar will scale.<br/>
+      <span style={{ color: '#F44336', fontWeight: 'bold' }}>• Stress Impact:</span> Stress triggers fight responses (elevated loudness) or freeze/anxiety responses (muted volume).
+    </div>
+  )
+};
+
 export default function RealtimeMonitor() {
   const [active, setActive] = useState(false);
   const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
   const [faceScore, setFaceScore] = useState(null);
   const [voiceScore, setVoiceScore] = useState(null);
   const [faceIndicators, setFaceIndicators] = useState(null);
   const [voiceIndicators, setVoiceIndicators] = useState(null);
   const esRef = useRef(null);
-  const voicePostPendingRef = useRef(false);
+
+  // Parameter explorer states
+  const [selectedFaceParam, setSelectedFaceParam] = useState('');
+  const [selectedVoiceParam, setSelectedVoiceParam] = useState('');
 
   // Server Connection Status
-  const [serverStatus, setServerStatus] = useState('disconnected');
+  const [serverStatus, setServerStatus] = useState('disconnected'); // 'connected', 'connecting', 'disconnected'
 
   // Calibration states
   const [calibrationPhase, setCalibrationPhase] = useState('idle');
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
+  const silenceRmsRef = useRef([]);
 
   // Smooth UI display values
   const [smoothFusedScore, setSmoothFusedScore] = useState(0);
-  const [smoothFaceScore, setSmoothFaceScore] = useState(0);
-  const [smoothVoiceScore, setSmoothVoiceScore] = useState(0);
+  const [smoothFaceScore, setSmoothFaceScore] = useState(null);
+  const [smoothVoiceScore, setSmoothVoiceScore] = useState(null);
 
-  // Stream Performance Metrics (Feature Capturing Rate)
-  const [faceFps, setFaceFps] = useState(0);
-  const [streamHealth, setStreamHealth] = useState(100);
-
-  // Background Health Ping
+  // Automatic Background Health Ping
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -45,66 +173,99 @@ export default function RealtimeMonitor() {
         setServerStatus('disconnected');
       }
     };
-
+    
     checkHealth();
+
+    // Check if calibration already exists on server
+    const checkCalibrationStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/calibrate/status?user_id=default`);
+        const data = await res.json();
+        if (data && data.is_complete) {
+          setIsCalibrated(true);
+        }
+      } catch (err) {
+        console.log("No previous calibration found on server.");
+      }
+    };
+    checkCalibrationStatus();
     const interval = setInterval(checkHealth, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const checkCalibration = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/calibrate/status?user_id=default`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.is_complete) {
-            setIsCalibrated(true);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch calibration status:', err);
-      }
-    };
-    checkCalibration();
-  }, []);
-
-  // Smooth score easings
+  // Easing/smoothing loops for high-responsiveness display updates
   useEffect(() => {
     if (!active) {
       setSmoothFusedScore(0);
-      setSmoothFaceScore(0);
-      setSmoothVoiceScore(0);
-      setFaceFps(0);
       return;
     }
-    const fusedTarget = result && result.fused_score !== undefined ? result.fused_score * 100 : 0;
-    const faceTarget = faceScore !== null ? faceScore * 100 : 0;
-    const voiceTarget = voiceScore !== null ? voiceScore * 100 : 0;
-
+    const target = result && result.fused_score !== undefined ? result.fused_score * 100 : 0;
     const interval = setInterval(() => {
-      setSmoothFusedScore((prev) => prev + (fusedTarget - prev) * 0.15);
-      setSmoothFaceScore((prev) => prev + (faceTarget - prev) * 0.15);
-      setSmoothVoiceScore((prev) => prev + (voiceTarget - prev) * 0.15);
-      setFaceFps(Math.floor(28 + Math.random() * 4));
-      setStreamHealth(98 + Math.floor(Math.random() * 3));
+      setSmoothFusedScore(prev => {
+        const diff = target - prev;
+        if (Math.abs(diff) < 0.5) return target;
+        return prev + diff * 0.15; // Smooth exponential step
+      });
     }, 50);
     return () => clearInterval(interval);
-  }, [result, faceScore, voiceScore, active]);
+  }, [result, active]);
+
+  useEffect(() => {
+    if (!active || faceScore === null) {
+      setSmoothFaceScore(null);
+      return;
+    }
+    const target = faceScore;
+    const interval = setInterval(() => {
+      setSmoothFaceScore(prev => {
+        if (prev === null) return target;
+        const diff = target - prev;
+        if (Math.abs(diff) < 0.01) return target;
+        return prev + diff * 0.15;
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, [faceScore, active]);
+
+  useEffect(() => {
+    if (!active || voiceScore === null) {
+      setSmoothVoiceScore(null);
+      return;
+    }
+    const target = voiceScore;
+    const interval = setInterval(() => {
+      setSmoothVoiceScore(prev => {
+        if (prev === null) return target;
+        const diff = target - prev;
+        if (Math.abs(diff) < 0.01) return target;
+        return prev + diff * 0.15;
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, [voiceScore, active]);
 
   const connectSSE = () => {
     setServerStatus('connecting');
     const es = new EventSource(`${API_BASE}/api/stream/fused`);
-
+    
     es.onopen = () => {
       setServerStatus('connected');
     };
-
+    
     es.onmessage = (e) => {
       setServerStatus('connected');
       try {
         const data = JSON.parse(e.data);
         if (data.status === 'active') {
           setResult(data);
+          setHistory(h => [
+            ...h.slice(-29), 
+            {
+              t: new Date().toLocaleTimeString(),
+              score: Math.round(data.fused_score * 100),
+            }
+          ]);
+          // Sync modality scores from fused stream to match decay timing (Fix voice score card display)
           if (data.per_modality) {
             if (data.per_modality.face !== undefined && data.per_modality.face !== null) {
               setFaceScore(data.per_modality.face.score);
@@ -117,169 +278,307 @@ export default function RealtimeMonitor() {
               setVoiceScore(null);
             }
           }
+        } else if (data.status === 'waiting') {
+          setResult(data);
+          setFaceScore(null);
+          setVoiceScore(null);
         }
       } catch (err) {
-        console.error('Failed to parse SSE data:', err);
+        console.error("SSE parse error: ", err);
       }
     };
-
     es.onerror = () => {
+      console.error("SSE Connection failed.");
       setServerStatus('disconnected');
+      es.close();
     };
-
     esRef.current = es;
   };
 
-  const disconnectSSE = () => {
+  const startMonitoring = () => {
+    setActive(true);
+    setResult(null);
+    setHistory([]);
+    setFaceScore(null);
+    setVoiceScore(null);
+    setFaceIndicators(null);
+    setVoiceIndicators(null);
+    setSmoothFusedScore(0);
+    setSmoothFaceScore(null);
+    setSmoothVoiceScore(null);
+
+    if (!isCalibrated) {
+      setCalibrating(true);
+      return; // Guided CalibrationWizard will trigger connectSSE on Complete
+    }
+
+    connectSSE();
+  };
+
+  const handleCalibrationComplete = (calibration) => {
+    setIsCalibrated(true);
+    setCalibrating(false);
+    setCalibrationPhase('idle');
+    console.log("[Calibration] Guided baseline loaded successfully: ", calibration);
+    
+    // Start active monitoring session
+    connectSSE();
+  };
+
+  const resetCalibration = () => {
+    setIsCalibrated(false);
+    stopMonitoring();
+  };
+
+  const stopMonitoring = () => {
+    setActive(false);
+    setCalibrating(false);
+    setCalibrationPhase('idle');
+    setFaceScore(null);
+    setVoiceScore(null);
+    setFaceIndicators(null);
+    setVoiceIndicators(null);
+    setSmoothFusedScore(0);
+    setSmoothFaceScore(null);
+    setSmoothVoiceScore(null);
     if (esRef.current) {
       esRef.current.close();
       esRef.current = null;
     }
-    setServerStatus('disconnected');
   };
 
-  const startMonitoring = async () => {
+  const handleVoiceChunk = async (blob) => {
     try {
-      setServerStatus('connecting');
-      const res = await fetch(`${API_BASE}/api/stream/start`, {
+      const response = await fetch(`${API_BASE}/api/stream/voice?user_id=default`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modalities: ['face', 'voice'] }),
+        headers: { 'Content-Type': 'audio/wav' },
+        body: blob,
       });
-      if (res.ok) {
-        setActive(true);
-        connectSSE();
-      } else {
-        alert('Failed to start stream server.');
-        setServerStatus('disconnected');
+      const data = await response.json();
+      
+      if (data && data.indicators !== undefined) {
+        setVoiceIndicators(data.indicators);
+        
+        if (calibrationPhase === 'silence') {
+          if (data.indicators.voice_intensity !== undefined) {
+            silenceRmsRef.current.push(data.indicators.voice_intensity);
+            console.log("[Calibration] Added silence RMS sample:", data.indicators.voice_intensity);
+          }
+        } else if (calibrationPhase === 'voice') {
+          await fetch(`${API_BASE}/api/calibrate/voice_sample`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: 'default', indicators: data.indicators, features: data.features }),
+          });
+          console.log("[Calibration] Posted voice sample indicators and features.");
+        }
       }
-    } catch (err) {
-      console.error('Failed to start stream:', err);
-      setServerStatus('disconnected');
-    }
-  };
-
-  const stopMonitoring = async () => {
-    try {
-      await fetch(`${API_BASE}/api/stream/stop`, { method: 'POST' });
-    } catch (err) {
-      console.error('Error stopping stream:', err);
-    } finally {
-      disconnectSSE();
-      setActive(false);
-      setResult(null);
-      setFaceScore(null);
-      setVoiceScore(null);
-      setFaceIndicators(null);
-      setVoiceIndicators(null);
-    }
-  };
-
-  const handleCalibrationComplete = () => {
-    setCalibrating(false);
-    setCalibrationPhase('idle');
-    setIsCalibrated(true);
-  };
-
-  const resetCalibration = async () => {
-    if (!window.confirm('Reset baseline calibration to factory defaults?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/calibrate/reset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: 'default' }),
-      });
-      if (res.ok) {
-        setIsCalibrated(false);
-        alert('Calibration baseline reset.');
-      }
-    } catch (err) {
-      console.error('Failed to reset calibration:', err);
-    }
-  };
-
-  const handleVoiceChunk = async (blob, metrics) => {
-    if (!active) return;
-    if (voicePostPendingRef.current) return;
-    voicePostPendingRef.current = true;
-    const formData = new FormData();
-    formData.append('audio', blob, 'chunk.wav');
-    formData.append('user_id', 'default');
-    if (metrics) {
-      if (metrics.f0 !== undefined) formData.append('f0_mean', metrics.f0);
-      if (metrics.jitter !== undefined) formData.append('jitter_percent', metrics.jitter);
-      if (metrics.shimmer !== undefined) formData.append('shimmer_db', metrics.shimmer);
-    }
-
-    try {
-      const response = await fetch(`${API_BASE}/api/analyze/voice`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setVoiceScore(data.stress_score);
-        if (data.indicators) {
-          setVoiceIndicators(data.indicators);
+      
+      // Update vocal stress level: if silent or unvoiced, clear score immediately
+      if (calibrationPhase === 'idle' && !calibrating) {
+        if (data && data.score !== undefined && data.score !== null) {
+          setVoiceScore(data.score);
+        } else {
+          setVoiceScore(null);
         }
       }
     } catch (err) {
-      console.error('Voice chunk POST error:', err);
-    } finally {
-      voicePostPendingRef.current = false;
+      console.error("Failed to POST voice chunk: ", err);
     }
   };
 
-  const displayLevel =
-    smoothFusedScore > 65
-      ? 'High Stress'
-      : smoothFusedScore > 35
-      ? 'Moderate Stress'
-      : 'Calm / Baseline';
+  useEffect(() => {
+    return () => {
+      if (esRef.current) esRef.current.close();
+    };
+  }, []);
+
+  const displayLevel = smoothFusedScore > 70 ? 'High' : smoothFusedScore > 40 ? 'Moderate' : 'Low';
+  const levelColor = active && !calibrating ? LEVEL_COLOR[displayLevel] : 'var(--text-muted)';
+  const stressPercent = Math.round(smoothFusedScore);
 
   return (
-    <div className="space-y-4 max-w-full select-none">
-      {/* Guided Calibration Overlay */}
-      {calibrating && (
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm mb-2">
-          <CalibrationWizard
+    <div className="neon-card fade-in-up" style={{ padding: 24, marginTop: 16 }}>
+      {/* Pulse animation styles for server connection */}
+      <style>{`
+        @keyframes pulseGlow {
+          0% { transform: scale(0.92); opacity: 0.5; }
+          50% { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(0.92); opacity: 0.5; }
+        }
+      `}</style>
+      
+      <h3 className="text-center mb-4 neon-text" style={{ fontSize: '1.8rem' }}>🧠 Real-Time Multimodal Monitoring</h3>
+      
+      {/* Controls & Overall Fused Assessment */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24, borderBottom: 'var(--glass-border)', paddingBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {!active ? (
+            <button 
+              className="btn btn-neon" 
+              onClick={startMonitoring} 
+              disabled={serverStatus === 'disconnected'}
+              style={{ fontSize: '1.05rem', padding: '12px 28px' }}
+            >
+              <span className="material-symbols-outlined fs-5">play_arrow</span>
+              <span>Start Session</span>
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button 
+                className="btn btn-stop-session" 
+                onClick={stopMonitoring} 
+                style={{ fontSize: '1.05rem', padding: '12px 28px' }}
+              >
+                <span className="material-symbols-outlined fs-5">stop</span>
+                <span>Stop Session</span>
+              </button>
+              {isCalibrated && (
+                <button 
+                  className="btn btn-recalibrate-neon" 
+                  onClick={resetCalibration} 
+                  style={{ fontSize: '1.05rem', padding: '12px 24px' }}
+                >
+                  <span className="material-symbols-outlined fs-5">restart_alt</span>
+                  <span>Recalibrate</span>
+                </button>
+              )}
+            </div>
+          )}
+          
+          {/* Server Connection Status Badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: '0.75rem',
+            padding: '6px 14px',
+            borderRadius: 20,
+            background: 'var(--accent-light-bg)',
+            border: `1px solid ${
+              serverStatus === 'connected' ? 'var(--primary-color)' :
+              serverStatus === 'connecting' ? 'rgba(255, 152, 0, 0.35)' : 'rgba(244, 67, 54, 0.35)'
+            }`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            transition: 'border-color 0.3s ease'
+          }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: serverStatus === 'connected' ? 'var(--primary-color)' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
+              display: 'inline-block',
+              animation: serverStatus !== 'disconnected' ? 'pulseGlow 1.8s infinite ease-in-out' : 'none',
+              boxShadow: `0 0 8px ${serverStatus === 'connected' ? 'var(--primary-color)' : serverStatus === 'connecting' ? '#FF9800' : '#F44336'}`
+            }} />
+            <span style={{
+              color: serverStatus === 'connected' ? 'var(--primary-color)' : serverStatus === 'connecting' ? '#FF9800' : '#F44336',
+              fontWeight: 700,
+              letterSpacing: '0.6px',
+              fontFamily: 'monospace'
+            }}>
+              {serverStatus === 'connected' ? 'SERVER ACTIVE' : serverStatus === 'connecting' ? 'CONNECTING...' : 'SERVER OFFLINE'}
+            </span>
+          </div>
+        </div>
+
+        {active && !calibrating && result && result.status === 'active' && (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 16,
+            background: 'var(--card-bg)',
+            padding: '10px 24px',
+            borderRadius: 12,
+            border: `1.5px solid ${levelColor}`,
+            boxShadow: `0 0 15px ${levelColor}22`
+          }}>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Fused Multimodal Stress Level:</span>
+            <span style={{ 
+              fontWeight: 800, 
+              color: levelColor, 
+              fontSize: '1.4rem', 
+              textShadow: `0 0 10px ${levelColor}44` 
+            }}>
+              {displayLevel} ({stressPercent}%)
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Guided Calibration Wizard Container */}
+      {active && calibrating && (
+        <div style={{ marginBottom: 28 }} className="fade-in-up">
+          <CalibrationWizard 
             userId="default"
+            silenceRmsRef={silenceRmsRef}
             onPhaseChange={(phase) => setCalibrationPhase(phase)}
             onComplete={handleCalibrationComplete}
           />
         </div>
       )}
 
-      {/* Main Grid: Stream (Left) vs Telemetry & Session Controls (Right) */}
-      <div className="grid grid-cols-12 gap-4 items-stretch">
-        {/* Left Column: Live camera feed & Waveform strip */}
-        <section className="col-span-12 lg:col-span-7 bg-white rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between relative border border-slate-200/90 h-full">
-          {/* Stream Header */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 text-white border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-cyan-400 text-sm">videocam</span>
-              <span className="text-xs font-bold font-mono tracking-wider">LIVE BIOMETRIC CAMERA & AUDIO STREAM</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-0.5 rounded-full text-[10px] font-mono text-cyan-300">
-                <span>FPS:</span>
-                <span className="font-bold">{active ? faceFps : 0}</span>
+      {/* Main Grid: Face (Modality 1) & Voice (Modality 2) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24, marginBottom: 24 }}>
+        
+        {/* Face Card */}
+        <div style={{ 
+          background: 'var(--card-bg)',
+          borderRadius: 16,
+          padding: 20,
+          border: 'var(--glass-border)',
+          boxShadow: 'var(--glass-shadow)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'var(--glass-border)', paddingBottom: 10 }}>
+            <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-color)' }}>📸 Facial Modality</h4>
+            {active && !calibrating && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {faceIndicators && faceIndicators.smile_score > 0.28 && (
+                  <span style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--primary-color)',
+                    background: 'var(--accent-light-bg)',
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    border: '1px solid var(--primary-color)',
+                    fontWeight: 600
+                  }}>
+                    😊 Smile / Calming Active
+                  </span>
+                )}
+                <span style={{ 
+                  fontWeight: 700, 
+                  color: smoothFaceScore === null ? 'var(--text-muted)' : smoothFaceScore > 0.7 ? '#F44336' : smoothFaceScore > 0.4 ? '#FF9800' : 'var(--primary-color)',
+                  fontSize: '0.9rem',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  background: 'var(--accent-light-bg)',
+                  border: smoothFaceScore === null ? '1px solid rgba(120,120,120,0.1)' : smoothFaceScore > 0.7 ? '1px solid #F4433655' : smoothFaceScore > 0.4 ? '1px solid #FF980055' : 'var(--glass-border)'
+                }}>
+                  {smoothFaceScore === null ? 'No Face Detected' : `Stress: ${Math.round(smoothFaceScore * 100)}%`}
+                </span>
               </div>
-              <div className={`w-2 h-2 rounded-full ${active ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></div>
-            </div>
+            )}
+            {active && calibrating && (
+              <span style={{ fontWeight: 600, color: '#FF9800', fontSize: '0.85rem' }}>
+                {calibrationPhase === 'face' ? 'RECORDING BASELINE...' : 'CAMERA PREVIEW'}
+              </span>
+            )}
           </div>
-
-          {/* Webcam stream view (Compact height so everything fits on 1 screen) */}
-          <div className="relative flex-1 bg-slate-950 flex items-center justify-center overflow-hidden min-h-[220px] max-h-[260px] aspect-video">
-            <FaceStream
-              active={active}
+          
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <FaceStream 
+              active={active} 
               calibrationMode={calibrationPhase === 'face'}
               userId="default"
               onResult={(data) => {
                 if (!calibrating && data && data.score !== undefined) {
                   setFaceScore(data.score);
                 }
-              }}
+              }} 
               onIndicatorsUpdate={(indicators) => {
                 setFaceIndicators(indicators);
                 if (indicators === null) {
@@ -287,289 +586,370 @@ export default function RealtimeMonitor() {
                 }
               }}
             />
+          </div>
 
-            {!active && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 bg-slate-950/85 p-4 text-center">
-                <span className="material-symbols-outlined text-3xl mb-1 text-slate-500">videocam_off</span>
-                <h3 className="font-bold text-xs font-mono text-slate-200">Camera Standby</h3>
-                <p className="text-[11px] font-mono text-slate-400">Click <strong className="text-cyan-400 font-bold">'Start Session'</strong> on the right to analyze</p>
+          <div style={{ background: 'var(--accent-light-bg)', borderRadius: 10, padding: 14, border: 'var(--glass-border)', flexGrow: 1 }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12 }}>Live Tracked Facial Patterns</div>
+            {active && faceIndicators ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <IndicatorBar label="Jaw Displacement (Mouth Open)" value={faceIndicators.jaw_displacement} scale={2.0} format={(v) => `${(v).toFixed(2)}`} />
+                <IndicatorBar label="Jaw Width (Masseter Clench)" value={faceIndicators.jaw_angle_width} scale={2.5} format={(v) => `${Math.round(v * 100)}%`} />
+                <IndicatorBar label="Blink Velocity (Stress Blink)" value={faceIndicators.blink_velocity} scale={5.0} format={(v) => `${(v).toFixed(2)} /s`} />
+                <IndicatorBar label="Brow Tension (Contraction)" value={faceIndicators.forehead_tension} scale={0.5} format={(v) => `${Math.round(v * 100)}%`} />
+                <IndicatorBar label="Lip Compression" value={faceIndicators.lip_compression} scale={0.5} format={(v) => `${Math.round(v * 100)}%`} />
+                <IndicatorBar label="Head Tilt / Movement" value={faceIndicators.head_tilt} scale={30.0} format={(v) => `${(v).toFixed(1)}°`} />
               </div>
-            )}
-
-            {/* Anti-Spoofing & Liveness Badge Overlay */}
-            {active && (
-              <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-3 py-1 rounded-lg border border-emerald-500/40 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-emerald-400 text-xs">verified</span>
-                <span className="text-white text-[10px] font-mono font-bold tracking-wide">
-                  REAL HUMAN FACE VERIFIED (98.6% LIVENESS)
-                </span>
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
+                {active ? (faceIndicators === null ? "No face detected in video frame" : "Extracting landmarks...") : "Start session to enable camera tracking"}
               </div>
             )}
           </div>
-
-          {/* Audio waveform recorder strip */}
-          <div className="bg-slate-900 flex flex-col px-4 py-2 justify-center border-t border-slate-800">
-            <WaveformRecorder
-              continuous={active}
-              chunkIntervalMs={1000}
-              onChunk={handleVoiceChunk}
-              voiceScore={smoothVoiceScore}
-              onIndicatorsUpdate={(indicators) => {
-                if (active && !calibrating) {
-                  setVoiceIndicators(indicators);
-                }
+          
+          {/* Biomarker Guide Dropdown for Face */}
+          <div style={{ marginTop: 8, borderTop: 'var(--glass-border)', paddingTop: 12 }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6, fontWeight: 600 }}>💡 Face Biomarker Guide & Tester</label>
+            <select 
+              value={selectedFaceParam} 
+              onChange={(e) => setSelectedFaceParam(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--card-bg)',
+                color: 'var(--text-color)',
+                border: 'var(--glass-border)',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                outline: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit'
               }}
-            />
+            >
+              <option value="">-- Choose facial biomarker to test/learn --</option>
+              <option value="jaw_displacement">Jaw Displacement (Mouth Open)</option>
+              <option value="jaw_width">Jaw Width (Masseter Clench)</option>
+              <option value="blink_velocity">Blink Velocity (Stress Blink)</option>
+              <option value="brow_tension">Brow Tension (Contraction)</option>
+              <option value="lip_compression">Lip Compression</option>
+              <option value="head_tilt">Head Tilt / Movement</option>
+            </select>
+            
+            {selectedFaceParam && (
+              <div className="fade-in-up" style={{
+                marginTop: 10,
+                background: 'var(--accent-light-bg)',
+                border: 'var(--glass-border)',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: '0.75rem',
+                lineHeight: '1.45',
+                color: 'var(--text-color)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)'
+              }}>
+                {faceParamDetails[selectedFaceParam]}
+              </div>
+            )}
           </div>
-        </section>
+        </div>
 
-        {/* Right Column: Per-Modality Scores, Stream Health, Biometric Reliability & Session Control Bar */}
-        <div className="col-span-12 lg:col-span-5 flex flex-col justify-between space-y-3">
-          {/* Individual Modality Score Cards Grid */}
-          <div className="grid grid-cols-3 gap-2.5">
-            {/* Fused Score Card */}
-            <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/90 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-500 tracking-wider uppercase font-mono">FUSED INDEX</span>
-              <div className="my-1">
-                <span className="text-xl md:text-2xl font-bold font-mono text-slate-900">
-                  {active && !calibrating ? Math.round(smoothFusedScore) : '--'}
-                </span>
-                <span className="text-xs text-slate-400 font-mono ml-1">%</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-700 transition-all duration-300 rounded-full"
-                  style={{ width: active && !calibrating ? `${smoothFusedScore}%` : '0%' }}
-                ></div>
-              </div>
-            </div>
-
-            {/* Face Score Card */}
-            <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/90 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-500 tracking-wider uppercase font-mono flex items-center gap-1">
-                <span className="material-symbols-outlined text-xs text-blue-600">face</span>
-                FACE SCORE
+        {/* Voice Card */}
+        <div style={{ 
+          background: 'var(--card-bg)',
+          borderRadius: 16,
+          padding: 20,
+          border: 'var(--glass-border)',
+          boxShadow: 'var(--glass-shadow)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'var(--glass-border)', paddingBottom: 10 }}>
+            <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-color)' }}>🎤 Vocal Modality</h4>
+            {active && !calibrating && (
+              <span style={{ 
+                fontWeight: 700, 
+                color: smoothVoiceScore === null ? 'var(--text-muted)' : smoothVoiceScore > 0.7 ? '#F44336' : smoothVoiceScore > 0.4 ? '#FF9800' : 'var(--primary-color)',
+                fontSize: '0.9rem',
+                padding: '4px 10px',
+                borderRadius: 6,
+                background: 'var(--accent-light-bg)',
+                border: smoothVoiceScore === null ? '1px solid rgba(120,120,120,0.1)' : smoothVoiceScore > 0.7 ? '1px solid #F4433655' : smoothVoiceScore > 0.4 ? '1px solid #FF980055' : 'var(--glass-border)'
+              }}>
+                {smoothVoiceScore === null ? 'Silent / Ambient' : `Stress: ${Math.round(smoothVoiceScore * 100)}%`}
               </span>
-              <div className="my-1">
-                <span className="text-xl md:text-2xl font-bold font-mono text-blue-900">
-                  {active && faceScore !== null ? Math.round(smoothFaceScore) : '--'}
-                </span>
-                <span className="text-xs text-slate-400 font-mono ml-1">%</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-600 transition-all duration-300 rounded-full"
-                  style={{ width: active && faceScore !== null ? `${smoothFaceScore}%` : '0%' }}
-                ></div>
-              </div>
-            </div>
-
-            {/* Voice Score Card */}
-            <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/90 flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-500 tracking-wider uppercase font-mono flex items-center gap-1">
-                <span className="material-symbols-outlined text-xs text-teal-600">mic</span>
-                VOICE SCORE
+            )}
+            {active && calibrating && (
+              <span style={{ fontWeight: 600, color: '#FF9800', fontSize: '0.85rem' }}>
+                {calibrationPhase === 'silence' ? 'RECORDING SILENCE...' : calibrationPhase === 'voice' ? 'RECORDING VOICE...' : 'MICROPHONE PREVIEW'}
               </span>
-              <div className="my-1">
-                <span className="text-xl md:text-2xl font-bold font-mono text-teal-800">
-                  {active && voiceScore !== null ? Math.round(smoothVoiceScore) : '--'}
-                </span>
-                <span className="text-xs text-slate-400 font-mono ml-1">%</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-teal-600 transition-all duration-300 rounded-full"
-                  style={{ width: active && voiceScore !== null ? `${smoothVoiceScore}%` : '0%' }}
-                ></div>
-              </div>
-            </div>
+            )}
           </div>
+          
+          <WaveformRecorder
+            continuous={active}
+            chunkIntervalMs={1000}
+            onChunk={handleVoiceChunk}
+            voiceScore={smoothVoiceScore}
+          />
 
-          {/* Feature Capturing Rate & Telemetry Stream Health Bar */}
-          <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/90 space-y-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-mono text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm text-blue-700">speed</span>
-                FEATURE CAPTURING RATE & THROUGHPUT
-              </span>
-              <span className="font-mono text-[9px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                {active ? `${streamHealth}% HEALTH` : '0% STANDBY'}
-              </span>
-            </div>
-            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200/60">
-              <div
-                className="h-full bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 rounded-full transition-all duration-300"
-                style={{ width: active ? `${streamHealth}%` : '0%' }}
-              ></div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-600">
-              <div className="bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                Face Rate: <strong className="text-slate-900 font-bold">{active ? `${faceFps} FPS` : '0 FPS'}</strong>
-              </div>
-              <div className="bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                Audio Sample: <strong className="text-slate-900 font-bold">{active ? '16.0 kHz' : '0 kHz'}</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Biometric Reliability & Realness Inspector */}
-          <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200/90 space-y-2">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-              <span className="font-mono text-[10px] font-bold text-slate-800 uppercase flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm text-emerald-600">security</span>
-                BIOMETRIC RELIABILITY INSPECTOR
-              </span>
-              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono">
-                {active ? 'LIVE VERIFIED' : 'READY'}
-              </span>
-            </div>
-
-            <div className="space-y-1.5 text-[10px]">
-              <div className="flex justify-between items-center bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                <span className="text-slate-600 font-medium">Face Input Verification</span>
-                <span className="font-mono font-bold text-emerald-700">
-                  {active ? '✓ Real Live Face (98.6%)' : '--'}
+          <div style={{ background: 'var(--accent-light-bg)', borderRadius: 10, padding: 14, border: 'var(--glass-border)', flexGrow: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Acoustic Stress Biomarkers</div>
+              {active && voiceIndicators && (voiceIndicators.is_silent || !voiceIndicators.f0_mean || voiceIndicators.f0_mean === 0) && (
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'var(--card-bg)', padding: '2px 8px', borderRadius: 4, border: 'var(--glass-border)' }}>
+                  🔇 Room Quiet / Idle
                 </span>
-              </div>
-              <div className="flex justify-between items-center bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                <span className="text-slate-600 font-medium">Voice Spectrum Integrity</span>
-                <span className="font-mono font-bold text-emerald-700">
-                  {active ? '✓ Human Acoustics (96.4%)' : '--'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                <span className="text-slate-600 font-medium">Sympathetic Reliability</span>
-                <span className="font-mono font-bold text-blue-900">
-                  {active ? 'High Confidence (94.2%)' : '--'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Integrated Session Controls Bar (Fills the gap below Biometric Reliability Box!) */}
-          <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/90 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {!active ? (
-                <button
-                  onClick={startMonitoring}
-                  disabled={serverStatus === 'disconnected'}
-                  className="bg-blue-900 text-white font-bold px-5 py-2 rounded-xl hover:bg-blue-800 active:scale-95 transition-all shadow-sm text-xs flex items-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-base">play_arrow</span>
-                  Start Session
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={stopMonitoring}
-                    className="bg-rose-600 text-white font-bold px-5 py-2 rounded-xl hover:bg-rose-700 active:scale-95 transition-all shadow-sm text-xs flex items-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-base">stop</span>
-                    Stop
-                  </button>
-                  {isCalibrated && (
-                    <button
-                      onClick={resetCalibration}
-                      className="border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold px-3 py-2 rounded-xl transition-all text-[11px]"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
               )}
             </div>
-
-            <div className="text-right font-mono text-[10px]">
-              <div className="text-slate-400 uppercase">{active ? displayLevel : 'Server'}</div>
-              <div className={serverStatus === 'connected' ? 'text-blue-700 font-bold' : 'text-rose-600 font-bold'}>
-                {serverStatus.toUpperCase()}
+            {active && voiceIndicators ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(() => {
+                  const isSilent = voiceIndicators.is_silent || !voiceIndicators.f0_mean || voiceIndicators.f0_mean === 0;
+                  return (
+                    <>
+                      <IndicatorBar 
+                        label="Pitch (F0 Mean)" 
+                        value={isSilent ? 0 : voiceIndicators.f0_mean} 
+                        scale={300.0} 
+                        format={(v) => !isSilent && v > 0 ? `${Math.round(v)} Hz` : '— (Silent)'} 
+                        valueColor={isSilent ? 'var(--text-muted)' : null}
+                      />
+                      <IndicatorBar 
+                        label="Jitter (Micro-instability)" 
+                        value={isSilent ? 0 : voiceIndicators.jitter_percent} 
+                        scale={5.0} 
+                        format={(v) => isSilent ? '0.00%' : `${(v).toFixed(2)}%`}
+                        valueColor={isSilent ? 'var(--text-muted)' : (voiceIndicators.jitter_reliable !== false ? null : '#FF9800')}
+                        extra={!isSilent && voiceIndicators.jitter_reliable === false && (
+                          <span style={{
+                            fontSize: '0.65rem', color: '#FF9800',
+                            background: '#FF980022', borderRadius: 4,
+                            padding: '1px 6px', fontWeight: 'bold', border: '1px solid #FF980044'
+                          }}>
+                            ⚠ noisy mic
+                          </span>
+                        )}
+                      />
+                      <IndicatorBar 
+                        label="Shimmer (Amplitude Var)" 
+                        value={isSilent ? 0 : voiceIndicators.shimmer_db} 
+                        scale={3.0} 
+                        format={(v) => isSilent ? '0.00 dB' : `${(v).toFixed(2)} dB`} 
+                        valueColor={isSilent ? 'var(--text-muted)' : null}
+                      />
+                      <IndicatorBar 
+                        label="Speaking Rate (ZCR)" 
+                        value={isSilent ? 0 : voiceIndicators.speaking_rate_proxy} 
+                        scale={0.2} 
+                        format={(v) => isSilent ? '0%' : `${(v * 100).toFixed(0)}%`} 
+                        valueColor={isSilent ? 'var(--text-muted)' : null}
+                      />
+                      <IndicatorBar 
+                        label="Voice Intensity" 
+                        value={voiceIndicators.voice_intensity} 
+                        scale={0.3} 
+                        format={(v) => isSilent ? `${Math.round(v * 100)}% (Ambient)` : `${Math.round(v * 100)}%`} 
+                        valueColor={isSilent ? 'var(--text-muted)' : null}
+                      />
+                    </>
+                  );
+                })()}
               </div>
-            </div>
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
+                {active ? "Listening for speech..." : "Start session to enable microphone"}
+              </div>
+            )}
+          </div>
+
+          {/* Biomarker Guide Dropdown for Voice */}
+          <div style={{ marginTop: 8, borderTop: 'var(--glass-border)', paddingTop: 12 }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6, fontWeight: 600 }}>💡 Voice Biomarker Guide & Tester</label>
+            <select 
+              value={selectedVoiceParam} 
+              onChange={(e) => setSelectedVoiceParam(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--card-bg)',
+                color: 'var(--text-color)',
+                border: 'var(--glass-border)',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                outline: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit'
+              }}
+            >
+              <option value="">-- Choose vocal biomarker to test/learn --</option>
+              <option value="f0_mean">Pitch (F0 Mean)</option>
+              <option value="jitter_percent">Jitter (Micro-instability)</option>
+              <option value="shimmer_db">Shimmer (Amplitude Var)</option>
+              <option value="speaking_rate_proxy">Speaking Rate (ZCR)</option>
+              <option value="voice_intensity">Voice Intensity</option>
+            </select>
+            
+            {selectedVoiceParam && (
+              <div className="fade-in-up" style={{
+                marginTop: 10,
+                background: 'var(--accent-light-bg)',
+                border: 'var(--glass-border)',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: '0.75rem',
+                lineHeight: '1.45',
+                color: 'var(--text-color)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)'
+              }}>
+                {voiceParamDetails[selectedVoiceParam]}
+              </div>
+            )}
           </div>
         </div>
+
       </div>
 
-      {/* Feature Bank Grid (Spacious Full-Width Cards directly under Stream section) */}
-      {!calibrating && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Face Feature Bank */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-mono text-xs text-blue-900 font-bold tracking-wider flex items-center gap-1.5 uppercase">
-                <span className="material-symbols-outlined text-base text-blue-700">face</span>
-                FACE EXPERT FEATURES
-              </span>
-              <span className="text-xs font-bold font-mono bg-blue-50 text-blue-700 px-3 py-0.5 rounded-full border border-blue-200">
-                {faceScore !== null ? `${Math.round(faceScore * 100)}%` : '--'}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-[11px]">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Blink Velocity</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{faceIndicators?.blink_velocity?.toFixed(3) || '--'}</div>
+      {/* Dynamic Reliability and Weights panel */}
+      {active && !calibrating && result && result.status === 'active' && result.weights && (
+        <div style={{ background: 'var(--accent-light-bg)', padding: 16, borderRadius: 12, border: 'var(--glass-border)', marginBottom: 24 }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>Dynamic Sensor Reliability Weights</div>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            {Object.entries(result.weights).map(([mode, weight]) => (
+              <div key={mode} style={{ flex: '1 1 150px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 12px', background: 'var(--card-bg)', borderRadius: 8, border: 'var(--glass-border)' }}>
+                <span style={{ textTransform: 'capitalize', color: 'var(--text-color)' }}>{mode} sensor weight:</span>
+                <span style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{Math.round(weight * 100)}%</span>
               </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Eye Aspect (EAR)</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{faceIndicators?.avg_ear?.toFixed(3) || '--'}</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Jaw Displ.</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{faceIndicators?.jaw_displacement?.toFixed(3) || '--'}</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Head Tilt</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{faceIndicators?.head_tilt?.toFixed(1) || '--'}°</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Brow Descent</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{faceIndicators?.brow_descent_left?.toFixed(3) || '--'}</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Lip Compress</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{faceIndicators?.lip_compression?.toFixed(3) || '--'}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Voice Feature Bank */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-mono text-xs text-teal-900 font-bold tracking-wider flex items-center gap-1.5 uppercase">
-                <span className="material-symbols-outlined text-base text-teal-700">mic</span>
-                VOICE EXPERT FEATURES
-              </span>
-              <span className="text-xs font-bold font-mono bg-teal-50 text-teal-800 px-3 py-0.5 rounded-full border border-teal-200">
-                {voiceScore !== null ? `${Math.round(voiceScore * 100)}%` : '--'}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-[11px]">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Pitch (F0)</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{voiceIndicators?.f0_mean?.toFixed(1) || '--'} Hz</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Jitter</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{voiceIndicators?.jitter_percent?.toFixed(2) || '--'}%</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Shimmer</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{voiceIndicators?.shimmer_db?.toFixed(2) || '--'} dB</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Intensity</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{voiceIndicators?.voice_intensity?.toFixed(3) || '--'}</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">ZCR Rate</div>
-                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{voiceIndicators?.speaking_rate_proxy?.toFixed(3) || '--'}</div>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
-                <div className="text-[10px] text-slate-500 font-medium">Status</div>
-                <div className="font-mono font-bold text-emerald-700 text-xs mt-0.5">{active ? 'LIVE' : 'STANDBY'}</div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
+      )}
+
+      {/* Professional Clinical-Grade Real-Time Stress Trend Chart */}
+      {active && !calibrating && history.length > 1 && (() => {
+        const chartPoints = history.map((h, i) => {
+          const x = 45 + (i / Math.max(1, history.length - 1)) * 440; // width is 500, scalable region
+          const y = 130 - (h.score / 100) * 115; // bottom at y=130, height scaled
+          return { x, y };
+        });
+
+        const lastPt = chartPoints[chartPoints.length - 1];
+        const lastScore = history[history.length - 1]?.score || 0;
+        const trendColor = lastScore > 70 ? LEVEL_COLOR.High : lastScore > 40 ? LEVEL_COLOR.Moderate : LEVEL_COLOR.Low;
+
+        const strokePath = chartPoints.length > 0 
+          ? `M ${chartPoints.map(p => `${p.x},${p.y}`).join(' L ')}` 
+          : '';
+
+        const fillPath = chartPoints.length > 0 
+          ? `M 45,130 L ${chartPoints.map(p => `${p.x},${p.y}`).join(' L ')} L ${chartPoints[chartPoints.length - 1].x},130 Z` 
+          : '';
+
+        return (
+          <div style={{ 
+            background: 'var(--card-bg)', 
+            padding: 20, 
+            borderRadius: 16, 
+            border: 'var(--glass-border)',
+            boxShadow: 'var(--glass-shadow)',
+            marginBottom: 24
+          }}>
+            <div style={{ 
+              fontSize: '0.85rem', 
+              color: 'var(--text-color)', 
+              marginBottom: 16, 
+              fontWeight: 600,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span>📈 Real-Time Multi-Modal Stress Trend</span>
+              <span style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '0.75rem', 
+                color: 'var(--text-muted)',
+                background: 'var(--accent-light-bg)',
+                padding: '2px 8px',
+                borderRadius: 4
+              }}>
+                Resolution: 1.0s/step
+              </span>
+            </div>
+            
+            <svg viewBox="0 0 500 150" width="100%" height="150" style={{ display: 'block', overflow: 'visible' }}>
+              <defs>
+                <linearGradient id="trendAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={trendColor} stopOpacity="0.25" />
+                  <stop offset="100%" stopColor={trendColor} stopOpacity="0.00" />
+                </linearGradient>
+              </defs>
+              
+              {/* Horizontal Grid lines */}
+              <line x1="45" y1="15" x2="485" y2="15" stroke="var(--glass-border)" strokeWidth="1" strokeOpacity="0.3" />
+              <line x1="45" y1="49.5" x2="485" y2="49.5" stroke="rgba(244,67,54,0.12)" strokeWidth="1" strokeDasharray="4,4" />
+              <line x1="45" y1="84" x2="485" y2="84" stroke="rgba(255,152,0,0.12)" strokeWidth="1" strokeDasharray="4,4" />
+              <line x1="45" y1="130" x2="485" y2="130" stroke="var(--glass-border)" strokeWidth="1" />
+
+              {/* Y Axis Labels */}
+              <text x="36" y="19" fill="#F44336" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">100%</text>
+              <text x="36" y="53" fill="rgba(244,67,54,0.7)" fontSize="9px" fontFamily="monospace" textAnchor="end">70%</text>
+              <text x="36" y="87.5" fill="rgba(255,152,0,0.7)" fontSize="9px" fontFamily="monospace" textAnchor="end">40%</text>
+              <text x="36" y="133" fill="var(--primary-color)" fontSize="9px" fontFamily="monospace" textAnchor="end" fontWeight="bold">0%</text>
+
+              {/* Threshold region labels */}
+              <text x="480" y="26" fill="rgba(244,67,54,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">HIGH STRESS</text>
+              <text x="480" y="60" fill="rgba(255,152,0,0.25)" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">MODERATE</text>
+              <text x="480" y="110" fill="var(--primary-color)" fillOpacity="0.25" fontSize="8px" fontFamily="monospace" textAnchor="end" fontWeight="bold">CALM</text>
+
+              {/* Filled Area Chart */}
+              {fillPath && <path d={fillPath} fill="url(#trendAreaGradient)" />}
+
+              {/* Stroke line (glowing) */}
+              {strokePath && (
+                <path 
+                  d={strokePath} 
+                  fill="none" 
+                  stroke={trendColor} 
+                  strokeWidth="2.5" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  style={{ filter: `drop-shadow(0px 0px 4px ${trendColor}88)` }}
+                />
+              )}
+
+              {/* Pulse glow dot for latest score */}
+              {lastPt && (
+                <>
+                  <circle cx={lastPt.x} cy={lastPt.y} r={4.5} fill={trendColor} />
+                  <circle cx={lastPt.x} cy={lastPt.y} r={9} fill="none" stroke={trendColor} strokeWidth="1.5">
+                    <animate attributeName="r" values="4.5;13;4.5" dur="1.8s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.8;0;0.8" dur="1.8s" repeatCount="indefinite" />
+                  </circle>
+                </>
+              )}
+            </svg>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12 }}>
+              <span>Session Start</span>
+              <span style={{ fontWeight: 'bold', color: trendColor }}>Current: {lastScore}%</span>
+              <span>Now</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {active && !calibrating && (!result || result.status === 'waiting') && (
+        <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }} className="fade-in-up">
+          <div className="spinner-border text-info mb-2" role="status" style={{ width: '1.5rem', height: '1.5rem' }}></div>
+          <p style={{ fontStyle: 'italic', margin: 0, fontSize: '0.85rem' }}>
+            Waiting for face and voice feed telemetry...
+          </p>
+        </div>
+      )}
+
+      {!active && (
+        <p className="text-center" style={{ color: 'var(--text-muted)', margin: 0, fontStyle: 'italic', fontSize: '0.9rem' }}>
+          Session inactive. Click "Start Session" to begin real-time calibration and diagnostics.
+        </p>
       )}
     </div>
   );

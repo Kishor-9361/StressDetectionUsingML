@@ -31,6 +31,8 @@ class UserCalibration:
         self.rms_mean      = None   # personal voice intensity
         self.rms_std       = None   # personal intensity variability
         self.hnr_mean      = None   # personal HNR baseline
+        self.jitter_baseline = None # personal resting jitter percent
+        self.shimmer_baseline = None # personal resting shimmer dB
         self.noise_floor   = None   # ambient noise RMS during silence
 
         # Face calibration
@@ -84,24 +86,24 @@ class UserCalibration:
     def build_session_scalers(self):
         """Fit session StandardScaler on the user's own calm baseline data."""
         with self._lock:
-            if len(self._voice_baseline_matrix) >= 8:
+            if len(self._voice_baseline_matrix) >= 3:
                 X_voice = np.array(self._voice_baseline_matrix)
                 self.voice_session_scaler = StandardScaler()
                 self.voice_session_scaler.fit(X_voice)
 
-            if len(self._face_baseline_matrix) >= 12:
+            if len(self._face_baseline_matrix) >= 5:
                 X_face = np.array(self._face_baseline_matrix)
                 self.face_session_scaler = StandardScaler()
                 self.face_session_scaler.fit(X_face)
 
-            if len(self._physio_baseline_matrix) >= 5:
+            if len(self._physio_baseline_matrix) >= 3:
                 X_physio = np.array(self._physio_baseline_matrix)
                 self.physio_session_scaler = StandardScaler()
                 self.physio_session_scaler.fit(X_physio)
 
             self.is_complete = (
-                self.voice_session_scaler is not None and
-                self.face_session_scaler  is not None
+                (self.voice_session_scaler is not None or self.f0_mean is not None) and
+                (self.face_session_scaler  is not None or self.ear_baseline is not None)
             )
             return self.is_complete
 
@@ -139,51 +141,86 @@ class UserCalibration:
             self.samples_physio.append(indicators)
 
     def finalize_voice(self):
-        """Compute voice baseline statistics from collected samples."""
+        """Compute voice baseline statistics from collected samples (general for all voices & pitch registers)."""
         with self._lock:
-            if len(self.samples_voice) < 5:
+            if len(self.samples_voice) < 3:
                 return False
 
-            f0_vals   = [s['f0_mean']        for s in self.samples_voice if s.get('f0_mean', 0) > 60]
-            rms_vals  = [s['voice_intensity'] for s in self.samples_voice if s.get('voice_intensity') is not None]
-            hnr_vals  = [s['hnr']            for s in self.samples_voice if s.get('hnr') is not None]
+            # Accept full physiological vocal range: 50 Hz (deep bass) to 550 Hz (soprano/child)
+            f0_vals  = [s['f0_mean'] for s in self.samples_voice if s.get('f0_mean') is not None and 50.0 <= s.get('f0_mean', 0) <= 550.0]
+            rms_vals = [s['voice_intensity'] for s in self.samples_voice if s.get('voice_intensity') is not None]
+            hnr_vals = [s['hnr'] for s in self.samples_voice if s.get('hnr') is not None]
 
-            if len(f0_vals) >= 3:
-                self.f0_mean  = float(np.median(f0_vals))   # median is more robust than mean
-                self.f0_std   = float(np.std(f0_vals)) + 1e-6
+            if len(f0_vals) >= 2:
+                self.f0_mean = float(np.median(f0_vals))
+                raw_std = float(np.std(f0_vals))
+                # Clamped pitch variability: ensures monotone or expressive speakers don't skew sensitivity
+                self.f0_std  = float(max(10.0, min(50.0, raw_std if raw_std > 0 else 20.0)))
+            elif f0_vals:
+                self.f0_mean = float(f0_vals[0])
+                self.f0_std  = 25.0
+            else:
+                self.f0_mean = 160.0
+                self.f0_std  = 30.0
+
             if rms_vals:
                 self.rms_mean = float(np.median(rms_vals))
-                self.rms_std  = float(np.std(rms_vals)) + 1e-6
+                raw_rms_std = float(np.std(rms_vals))
+                self.rms_std  = float(max(0.015, raw_rms_std if raw_rms_std > 0 else 0.05))
             if hnr_vals:
                 self.hnr_mean = float(np.median(hnr_vals))
+
+            jit_vals = [s['jitter_percent'] for s in self.samples_voice if s.get('jitter_percent') is not None and s.get('jitter_percent') > 0]
+            shim_vals = [s['shimmer_db'] for s in self.samples_voice if s.get('shimmer_db') is not None and s.get('shimmer_db') > 0]
+            self.jitter_baseline = float(np.median(jit_vals)) if jit_vals else 1.1
+            self.shimmer_baseline = float(np.median(shim_vals)) if shim_vals else 1.0
 
             return True
 
     def finalize_face(self):
-        """Compute face baseline statistics from collected samples."""
+        """Compute face baseline statistics from collected samples (general for all facial structures & eye shapes)."""
         with self._lock:
-            if len(self.samples_face) < 10:
+            if len(self.samples_face) < 5:
                 return False
 
-            ear_vals  = [s['avg_ear']           for s in self.samples_face if s.get('avg_ear') is not None]
-            jaw_vals  = [s['jaw_displacement']  for s in self.samples_face if s.get('jaw_displacement') is not None]
+            ear_vals  = [s['avg_ear'] for s in self.samples_face if s.get('avg_ear') is not None and s.get('avg_ear') > 0.05]
+            jaw_vals  = [s['jaw_displacement'] for s in self.samples_face if s.get('jaw_displacement') is not None]
             brow_vals = [s['brow_descent_left'] for s in self.samples_face if s.get('brow_descent_left') is not None]
 
             if ear_vals:
-                # Remove outliers (blinks) before computing baseline by sorting and slicing the bottom 20%
+                # Remove blinks (bottom 15%) and extreme wide-eye frames (top 10%)
                 ear_arr = np.sort(np.array(ear_vals))
-                slice_idx = int(len(ear_arr) * 0.2)
-                ear_arr_filtered = ear_arr[slice_idx:]
-                if len(ear_arr_filtered) > 0:
-                    self.ear_baseline  = float(np.median(ear_arr_filtered))
+                if len(ear_arr) >= 6:
+                    low_cut = int(len(ear_arr) * 0.15)
+                    high_cut = max(low_cut + 1, int(len(ear_arr) * 0.90))
+                    ear_filtered = ear_arr[low_cut:high_cut]
                 else:
-                    self.ear_baseline  = float(np.median(ear_arr))
+                    ear_filtered = ear_arr
+                self.ear_baseline = float(np.median(ear_filtered))
+            else:
+                self.ear_baseline = 0.28
 
             if jaw_vals:
-                self.jaw_baseline  = float(np.median(jaw_vals))
+                jaw_arr = np.sort(np.array(jaw_vals))
+                if len(jaw_arr) >= 6:
+                    low_cut = int(len(jaw_arr) * 0.10)
+                    high_cut = max(low_cut + 1, int(len(jaw_arr) * 0.90))
+                    self.jaw_baseline = float(np.median(jaw_arr[low_cut:high_cut]))
+                else:
+                    self.jaw_baseline = float(np.median(jaw_arr))
+            else:
+                self.jaw_baseline = 1.05
 
             if brow_vals:
-                self.brow_baseline = float(np.median(brow_vals))
+                brow_arr = np.sort(np.array(brow_vals))
+                if len(brow_arr) >= 6:
+                    low_cut = int(len(brow_arr) * 0.10)
+                    high_cut = max(low_cut + 1, int(len(brow_arr) * 0.90))
+                    self.brow_baseline = float(np.median(brow_arr[low_cut:high_cut]))
+                else:
+                    self.brow_baseline = float(np.median(brow_arr))
+            else:
+                self.brow_baseline = 0.18
 
             self.is_complete = True
             return True
@@ -244,6 +281,16 @@ class UserCalibration:
             z_hnr = f[5] - self.hnr_mean
             f[5] = means[5] + z_hnr * scales[5]
 
+        # Jitter normalization relative to resting baseline
+        jit_base = self.jitter_baseline if self.jitter_baseline is not None else 1.1
+        z_jitter = (f[3] - jit_base) / 0.8
+        f[3] = means[3] + z_jitter * scales[3]
+
+        # Shimmer normalization relative to resting baseline
+        shim_base = self.shimmer_baseline if self.shimmer_baseline is not None else 1.0
+        z_shimmer = (f[4] - shim_base) / 0.8
+        f[4] = means[4] + z_shimmer * scales[4]
+
         if self.noise_floor is not None and self.noise_floor > 0:
             # Remove noise floor from high frequency ratio raw feature
             f[8] = max(0.0, f[8] - (self.noise_floor * 2.0))
@@ -289,6 +336,8 @@ class UserCalibration:
                 'rms_mean': self.rms_mean,
                 'rms_std': self.rms_std,
                 'hnr_mean': self.hnr_mean,
+                'jitter_baseline': self.jitter_baseline,
+                'shimmer_baseline': self.shimmer_baseline,
                 'noise_floor': self.noise_floor,
                 'ear_baseline': self.ear_baseline,
                 'jaw_baseline': self.jaw_baseline,
@@ -329,6 +378,8 @@ class UserCalibration:
                 self.rms_mean = data.get('rms_mean')
                 self.rms_std = data.get('rms_std')
                 self.hnr_mean = data.get('hnr_mean')
+                self.jitter_baseline = data.get('jitter_baseline')
+                self.shimmer_baseline = data.get('shimmer_baseline')
                 self.noise_floor = data.get('noise_floor')
                 self.ear_baseline = data.get('ear_baseline')
                 self.jaw_baseline = data.get('jaw_baseline')
@@ -347,15 +398,15 @@ class UserCalibration:
                 self._physio_baseline_matrix = [np.array(row, dtype=np.float32) for row in data.get('_physio_baseline_matrix', [])]
                 
                 # Reconstruct session scalers
-                if len(self._voice_baseline_matrix) >= 8:
+                if len(self._voice_baseline_matrix) >= 3:
                     X_voice = np.array(self._voice_baseline_matrix)
                     self.voice_session_scaler = StandardScaler()
                     self.voice_session_scaler.fit(X_voice)
-                if len(self._face_baseline_matrix) >= 12:
+                if len(self._face_baseline_matrix) >= 5:
                     X_face = np.array(self._face_baseline_matrix)
                     self.face_session_scaler = StandardScaler()
                     self.face_session_scaler.fit(X_face)
-                if len(self._physio_baseline_matrix) >= 5:
+                if len(self._physio_baseline_matrix) >= 3:
                     X_physio = np.array(self._physio_baseline_matrix)
                     self.physio_session_scaler = StandardScaler()
                     self.physio_session_scaler.fit(X_physio)
@@ -372,6 +423,8 @@ class UserCalibration:
             'f0_std':        self.f0_std,
             'rms_mean':      self.rms_mean,
             'hnr_mean':      self.hnr_mean,
+            'jitter_baseline': self.jitter_baseline,
+            'shimmer_baseline': self.shimmer_baseline,
             'ear_baseline':  self.ear_baseline,
             'jaw_baseline':  self.jaw_baseline,
             'brow_baseline': self.brow_baseline,

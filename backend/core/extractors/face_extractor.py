@@ -154,8 +154,30 @@ class FaceExtractor:
             x, y = int(min(x_coords) * w_img), int(min(y_coords) * h_img)
             w, h = int((max(x_coords) - min(x_coords)) * w_img), int((max(y_coords) - min(y_coords)) * h_img)
 
+            # Calculate smile score from landmarks (mouth corner elevation + cheek raise)
+            lipCenterY = (pts[13][1] + pts[14][1]) / 2.0
+            leftCornerY = pts[61][1]
+            rightCornerY = pts[291][1]
+            cornerElevation = ((lipCenterY - leftCornerY) + (lipCenterY - rightCornerY)) / (2.0 * faceH)
+            
+            leftUnderEyeH = dist(159, 145)
+            rightUnderEyeH = dist(386, 374)
+            cheekRaise = (leftUnderEyeH + rightUnderEyeH) / (2.0 * faceH)
+
+            smileScore = max(0.0, float((cornerElevation * 5.0) + ((0.025 - cheekRaise) * 20.0)))
+            self.last_smile_score = float(np.clip(smileScore, 0.0, 1.0))
+
             return features, (x, y, w, h)
 
         except Exception as e:
             print(f"FaceExtractor Error: {e}")
             return None, None
+
+    def detect_smile(self, image_path):
+        """Returns smile score (0.0 to 1.0) and boolean smile_detected."""
+        try:
+            self.extract_features(image_path)
+            score = getattr(self, 'last_smile_score', 0.0)
+            return score, score > 0.3
+        except Exception:
+            return 0.0, False

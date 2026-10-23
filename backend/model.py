@@ -99,15 +99,12 @@ class MultimodalStressDetector:
             return False
 
     def detect_smile(self, image_path):
-        """Legacy helper for fallback thresholding."""
+        """Detect smile/laughter from face landmarks to suppress false positive stress."""
         try:
-            img = cv2.imread(image_path)
-            if img is None: return 0.0
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            faces = self.face_extractor.face_cascade.detectMultiScale(gray, 1.3, 5)
-            # Not loading smile cascade explicitly here to keep clean, returning 0
+            score, _ = self.face_extractor.detect_smile(image_path)
+            return float(score)
+        except Exception:
             return 0.0
-        except: return 0.0
 
     def extract_facial_features(self, image_path):
         """Delegates to the dedicated FaceExtractor module."""

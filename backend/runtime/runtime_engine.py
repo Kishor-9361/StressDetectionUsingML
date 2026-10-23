@@ -815,22 +815,22 @@ class RuntimeEngine:
         cal = get_or_create(user_id)
         if cal.is_complete:
             if modality == "face" and len(cal._face_baseline_matrix) > 0:
-                self.calibration_baselines[modality] = np.mean(cal._face_baseline_matrix, axis=0)
+                self.calibration_baselines[modality] = np.median(cal._face_baseline_matrix, axis=0)
                 self.calibrating[modality] = False
             elif modality == "voice" and len(cal._voice_baseline_matrix) > 0:
-                self.calibration_baselines[modality] = np.mean(cal._voice_baseline_matrix, axis=0)
+                self.calibration_baselines[modality] = np.median(cal._voice_baseline_matrix, axis=0)
                 self.calibrating[modality] = False
             elif modality == "physio" and len(cal._physio_baseline_matrix) > 0:
-                self.calibration_baselines[modality] = np.mean(cal._physio_baseline_matrix, axis=0)
+                self.calibration_baselines[modality] = np.median(cal._physio_baseline_matrix, axis=0)
                 self.calibrating[modality] = False
 
         if self.calibrating[modality]:
             self.feature_history[modality].append(feats)
             if len(self.feature_history[modality]) >= self.calibration_frames:
-                self.calibration_baselines[modality] = np.mean(self.feature_history[modality], axis=0)
+                self.calibration_baselines[modality] = np.median(self.feature_history[modality], axis=0)
                 self.calibrating[modality] = False
                 self.feature_history[modality] = []
-            baseline = self.calibration_baselines[modality] if not self.calibrating[modality] else np.mean(self.feature_history[modality], axis=0)
+            baseline = self.calibration_baselines[modality] if not self.calibrating[modality] else np.median(self.feature_history[modality], axis=0)
         else:
             baseline = self.calibration_baselines[modality]
 

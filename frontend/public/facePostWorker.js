@@ -5,7 +5,7 @@
 let pendingPost = false;  // rate limiter — one POST in flight at a time
 
 self.onmessage = async function(e) {
-    const { indicators, timestamp, calibrationMode, userId, apiBase } = e.data;
+    const { indicators, timestamp, calibrationMode, userId } = e.data;
     
     // Drop this frame if a POST is already in flight
     // This prevents queue buildup when server is slow
@@ -13,10 +13,10 @@ self.onmessage = async function(e) {
     
     pendingPost = true;
     try {
-        const base = apiBase || 'http://127.0.0.1:5000';
-        const url = calibrationMode 
-            ? `${base}/api/calibrate/face_sample` 
-            : `${base}/api/stream/face`;
+        const isDevPort = self.location && self.location.origin && self.location.origin.includes(':3000');
+        const origin = isDevPort ? 'http://127.0.0.1:5000' : ((self.location && self.location.origin && self.location.origin !== 'null') ? self.location.origin : 'http://127.0.0.1:5000');
+        const endpoint = calibrationMode ? '/api/calibrate/face_sample' : '/api/stream/face';
+        const url = `${origin}${endpoint}`;
             
         const response = await fetch(url, {
             method: 'POST',

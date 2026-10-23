@@ -6,10 +6,10 @@ import os
 import subprocess
 import sys
 
-def extract_f0_yin(y, sr, f0_min=75, f0_max=400, frame_len=512, hop_len=160):
+def extract_f0_yin(y, sr, f0_min=65, f0_max=450, frame_len=1024, hop_len=160):
     """
     YIN algorithm for F0 extraction.
-    Fast and accurate. (No longer deadlocks since eventlet was removed).
+    frame_len=1024 ensures accurate detection of low pitches down to 50 Hz without period truncation.
     """
     try:
         f0_yin = librosa.yin(
@@ -20,16 +20,17 @@ def extract_f0_yin(y, sr, f0_min=75, f0_max=400, frame_len=512, hop_len=160):
             frame_length=frame_len,
             hop_length=hop_len
         )
-        # librosa.yin returns array of f0. We need voiced/unvoiced decisions.
-        # Simple proxy: if RMS energy is very low, it's unvoiced
+        # Compute RMS energy per frame
         rms = librosa.feature.rms(y=y, frame_length=frame_len, hop_length=hop_len)[0]
-        # Pad rms to match f0_yin length if necessary (though usually they match)
         if len(rms) < len(f0_yin):
             rms = np.pad(rms, (0, len(f0_yin) - len(rms)), mode='edge')
         elif len(rms) > len(f0_yin):
             rms = rms[:len(f0_yin)]
             
-        voiced_flag = rms > 0.01  # Energy threshold
+        # Voice activity threshold: ambient room noise is typically 0.005 - 0.020.
+        # Human speech into mic typically has RMS >= 0.028.
+        speech_thresh = max(0.025, float(np.median(rms) * 1.5))
+        voiced_flag = (rms > speech_thresh) & (f0_yin > f0_min) & (f0_yin < f0_max)
         
         f0_track = np.copy(f0_yin)
         f0_track[~voiced_flag] = np.nan
@@ -153,86 +154,116 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000, f0_min=75, f0_
     frame_len = int(sr * 0.025)  # 25ms frames
     hop_len   = int(sr * 0.010)  # 10ms hop
     
-    try:
-        f0_track, voiced_flag = extract_f0_yin(y, sr, f0_min, f0_max, 512, hop_len)
-        f0_voiced = f0_track[~np.isnan(f0_track)]
-        
-        indicators['f0_mean']  = float(np.mean(f0_voiced)) if len(f0_voiced) > 0 else 0.0
-        indicators['f0_std']   = float(np.std(f0_voiced))  if len(f0_voiced) > 0 else 0.0
-        indicators['f0_range'] = float(np.ptp(f0_voiced))  if len(f0_voiced) > 0 else 0.0
-        
-        if len(f0_voiced) >= 3:
-            import scipy.signal
-            f0_smoothed = scipy.signal.medfilt(f0_voiced, kernel_size=3)
-            periods = sr / (f0_smoothed + 1e-10)
-            period_diffs = np.abs(np.diff(periods))
-            jitter_rap = float(np.mean(period_diffs) / (np.mean(periods) + 1e-10)) * 100
-            indicators['jitter_percent']  = float(np.clip(jitter_rap, 0.0, 15.0))
-            indicators['jitter_reliable'] = bool(jitter_rap < 10.0)
-        else:
-            indicators['jitter_percent']  = 0.0
-            indicators['jitter_reliable'] = False
-            
-        # Shimmer: amplitude variation between consecutive voiced frames
-        rms_all = librosa.feature.rms(y=y, frame_length=frame_len, hop_length=hop_len)[0]
-        voiced_rms = rms_all[:len(voiced_flag)][voiced_flag]
-        if len(voiced_rms) >= 3:
-            import scipy.signal
-            voiced_rms_smoothed = scipy.signal.medfilt(voiced_rms, kernel_size=3)
-            amp_ratios = voiced_rms_smoothed[1:] / (voiced_rms_smoothed[:-1] + 1e-10)
-            shimmer_db = float(np.mean(np.abs(20 * np.log10(amp_ratios + 1e-10))))
-            if shimmer_db > 10.0: # clip at 10dB for display
-                shimmer_db = 10.0
-            indicators['shimmer_db'] = shimmer_db
-        elif len(voiced_rms) == 2:
-            amp_ratios = voiced_rms[1:] / (voiced_rms[:-1] + 1e-10)
-            shimmer_db = float(np.mean(np.abs(20 * np.log10(amp_ratios + 1e-10))))
-            if shimmer_db > 10.0:
-                shimmer_db = 10.0
-            indicators['shimmer_db'] = shimmer_db
-        else:
-            indicators['shimmer_db'] = 0.0
-            
-        voiced_frac = float(np.sum(voiced_flag) / len(voiced_flag)) if len(voiced_flag) > 0 else 0.5
-        indicators['voiced_fraction'] = voiced_frac
-        
-    except Exception as e:
-        print(f"Feature extraction error: {e}")
-        indicators['f0_mean'] = indicators['f0_std'] = indicators['f0_range'] = 0.0
-        indicators['jitter_percent'] = 0.0
-        indicators['jitter_reliable'] = False
-        indicators['shimmer_db'] = 0.0
-        indicators['voiced_fraction'] = 0.5
-        
-    # 6: HNR approximation via autocorrelation
+    # Check harmonic speech periodicity via normalized autocorrelation
+    # Human voiced speech has strong periodic peaks (> 0.38) at pitch lags (50-450Hz).
+    # Ambient room noise and laptop fans have chaotic, flat autocorrelation (< 0.25).
     try:
         ac_full = np.correlate(y, y, mode='full')[len(y) - 1:]
         ac_norm = ac_full / (ac_full[0] + EPS)
-        # Find first zero crossing to determine search range for fundamental period
-        zc = np.where(ac_norm < 0)[0]
-        first_zc = zc[0] if len(zc) > 0 else len(ac_norm)
-        
-        if first_zc < len(ac_norm):
-            peak_val = np.max(ac_norm[first_zc:])
-            peak_val = np.clip(peak_val, 1e-10, 0.9999) # prevent log10 domain errors
-            hnr = 10 * np.log10(peak_val / (1 - peak_val + EPS) + EPS)
-        else:
-            hnr = 0.0
+        min_lag = max(1, int(sr / max(f0_max, 450)))
+        max_lag = min(len(ac_norm) - 1, int(sr / max(f0_min, 50)))
+        harmonic_peak = float(np.max(ac_norm[min_lag:max_lag])) if max_lag > min_lag else 0.0
     except Exception:
-        hnr = 0.0
-    indicators['hnr'] = float(np.clip(hnr, -20, 30))
+        harmonic_peak = 0.0
+
+    if harmonic_peak < 0.35:
+        # Definitively silent room or non-speech background noise
+        indicators['f0_mean'] = 0.0
+        indicators['f0_std'] = 0.0
+        indicators['f0_range'] = 0.0
+        indicators['jitter_percent'] = 0.0
+        indicators['jitter_reliable'] = True
+        indicators['shimmer_db'] = 0.0
+        indicators['speaking_rate_proxy'] = 0.0
+        indicators['voiced_fraction'] = 0.0
+        indicators['is_silent'] = True
+    else:
+        try:
+            f0_track, voiced_flag = extract_f0_yin(y, sr, f0_min, f0_max, 1024, hop_len)
+            f0_voiced = f0_track[~np.isnan(f0_track)]
+            voiced_frac = float(np.sum(voiced_flag) / len(voiced_flag)) if len(voiced_flag) > 0 else 0.0
+            indicators['voiced_fraction'] = voiced_frac
+
+            # If less than 15% of frames contain voiced speech or fewer than 5 voiced frames: SILENCE / UNVOICED
+            if len(f0_voiced) < 5 or voiced_frac < 0.15:
+                indicators['f0_mean'] = 0.0
+                indicators['f0_std'] = 0.0
+                indicators['f0_range'] = 0.0
+                indicators['jitter_percent'] = 0.0
+                indicators['jitter_reliable'] = True
+                indicators['shimmer_db'] = 0.0
+                indicators['speaking_rate_proxy'] = 0.0
+                indicators['is_silent'] = True
+            else:
+                indicators['is_silent'] = False
+                indicators['f0_mean']  = float(np.mean(f0_voiced))
+                indicators['f0_std']   = float(np.std(f0_voiced))
+                indicators['f0_range'] = float(np.ptp(f0_voiced))
+                
+                import scipy.signal
+                f0_smoothed = scipy.signal.medfilt(f0_voiced, kernel_size=3)
+                periods = sr / (f0_smoothed + 1e-10)
+                period_diffs = np.abs(np.diff(periods))
+                jitter_rap = float(np.mean(period_diffs) / (np.mean(periods) + 1e-10)) * 100
+                indicators['jitter_percent']  = float(np.clip(jitter_rap, 0.0, 5.0))
+                indicators['jitter_reliable'] = bool(jitter_rap < 3.0)
+                
+                # Shimmer: amplitude variation between consecutive voiced frames
+                rms_all = librosa.feature.rms(y=y, frame_length=frame_len, hop_length=hop_len)[0]
+                voiced_rms = rms_all[:len(voiced_flag)][voiced_flag]
+                if len(voiced_rms) >= 3:
+                    voiced_rms_smoothed = scipy.signal.medfilt(voiced_rms, kernel_size=3)
+                    amp_ratios = voiced_rms_smoothed[1:] / (voiced_rms_smoothed[:-1] + 1e-10)
+                    shimmer_db = float(np.mean(np.abs(20 * np.log10(amp_ratios + 1e-10))))
+                    indicators['shimmer_db'] = float(np.clip(shimmer_db, 0.0, 5.0))
+                else:
+                    indicators['shimmer_db'] = 0.0
+        except Exception as e:
+            print(f"Feature extraction error: {e}")
+            indicators['f0_mean'] = indicators['f0_std'] = indicators['f0_range'] = 0.0
+            indicators['jitter_percent'] = 0.0
+            indicators['jitter_reliable'] = True
+            indicators['shimmer_db'] = 0.0
+            indicators['voiced_fraction'] = 0.0
+            indicators['is_silent'] = True
+        
+    # 6: HNR approximation via autocorrelation
+    try:
+        if indicators.get('is_silent', False):
+            indicators['hnr'] = 0.0
+        else:
+            ac_full = np.correlate(y, y, mode='full')[len(y) - 1:]
+            ac_norm = ac_full / (ac_full[0] + EPS)
+            # Find first zero crossing to determine search range for fundamental period
+            zc = np.where(ac_norm < 0)[0]
+            first_zc = zc[0] if len(zc) > 0 else len(ac_norm)
+            
+            if first_zc < len(ac_norm):
+                peak_val = np.max(ac_norm[first_zc:])
+                peak_val = np.clip(peak_val, 1e-10, 0.9999) # prevent log10 domain errors
+                hnr = 10 * np.log10(peak_val / (1 - peak_val + EPS) + EPS)
+            else:
+                hnr = 0.0
+            indicators['hnr'] = float(np.clip(hnr, -20, 30))
+    except Exception:
+        indicators['hnr'] = 0.0
 
     # 7: Speaking rate proxy (ZCR)
     try:
-        zcr = librosa.feature.zero_crossing_rate(y, frame_length=frame_len, hop_length=hop_len)[0]
-        indicators['speaking_rate_proxy'] = float(np.mean(zcr))
+        if indicators.get('is_silent', False):
+            indicators['speaking_rate_proxy'] = 0.0
+        else:
+            zcr = librosa.feature.zero_crossing_rate(y, frame_length=frame_len, hop_length=hop_len)[0]
+            indicators['speaking_rate_proxy'] = float(np.mean(zcr))
     except Exception:
         indicators['speaking_rate_proxy'] = 0.0
 
-    # 8: Voice intensity
+    # 8: Voice intensity (reports actual audio RMS even in silence)
     try:
         rms = librosa.feature.rms(y=y, frame_length=frame_len, hop_length=hop_len)[0]
         indicators['voice_intensity'] = float(np.mean(rms))
+    except Exception:
+        indicators['voice_intensity'] = 0.0
     except Exception:
         indicators['voice_intensity'] = 0.0
         rms = np.array([0.0])

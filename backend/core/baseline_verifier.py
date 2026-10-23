@@ -3,9 +3,9 @@ import numpy as np
 class BaselineVerifier:
     """
     Validates calibration baseline sequences to ensure the user is in a calm,
-    low-stress, and clean sensor state during calibration.
+    low-stress, and clean sensor state during calibration across diverse faces and vocal registers.
     """
-    def __init__(self, calm_hr_threshold=95.0, face_min_confidence=0.8, voice_max_intensity=0.08):
+    def __init__(self, calm_hr_threshold=100.0, face_min_confidence=0.55, voice_max_intensity=0.85):
         self.calm_hr_threshold = calm_hr_threshold
         self.face_min_confidence = face_min_confidence
         self.voice_max_intensity = voice_max_intensity
@@ -13,50 +13,62 @@ class BaselineVerifier:
     def verify_face_baseline(self, features_chunk):
         """
         Validates a sequence of face features (shape [N, 18]).
-        Checks if tracking was stable and user was relatively still.
+        Checks if tracking was stable and user had a resting, calm expression.
         """
         if features_chunk is None or len(features_chunk) == 0:
-            return {"status": "recalibration_needed", "reason": "No data received"}
+            return {"status": "recalibration_needed", "reason": "No face landmark data received"}
 
         # confidence is at index 16
-        confidences = features_chunk[:, 16]
+        conf_idx = 16 if features_chunk.shape[1] > 16 else 0
+        confidences = features_chunk[:, conf_idx]
         mean_conf = np.mean(confidences)
         if mean_conf < self.face_min_confidence:
             return {
-                "status": "recalibration_needed",
-                "reason": f"Face tracking confidence too low: {mean_conf:.2f} (expected > {self.face_min_confidence})"
-            }
-
-        # head_tilt is at index 12, temporal_x_var at 13
-        # Check for excessive movement during calibration
-        movement = np.std(features_chunk[:, 12])
-        if movement > 0.15:
-            return {
                 "status": "low_confidence",
-                "reason": f"Excessive head movement standard deviation: {movement:.3f} (expected < 0.15)"
+                "reason": f"Face tracking confidence slightly low: {mean_conf:.2f} (acceptable > {self.face_min_confidence})"
             }
 
-        return {"status": "verified", "reason": "Stable face baseline verified"}
+        # head_tilt is at index 12
+        if features_chunk.shape[1] > 12:
+            movement = float(np.std(features_chunk[:, 12]))
+            if movement > 0.35:
+                return {
+                    "status": "low_confidence",
+                    "reason": f"Head movement variation: {movement:.3f}"
+                }
+
+        return {"status": "verified", "reason": "Stable face baseline verified across geometry"}
 
     def verify_voice_baseline(self, features_chunk):
         """
         Validates voice sequence (shape [N, 12]).
-        Ensures the baseline calibration is mostly silent.
+        Ensures the baseline speech is natural, non-shouted, and clean.
         """
         if features_chunk is None or len(features_chunk) == 0:
             return {"status": "verified", "reason": "No voice data (optional)"}
 
         # voice_intensity is at index 7
-        intensities = features_chunk[:, 7]
-        mean_intensity = np.mean(intensities)
+        intensities = features_chunk[:, 7] if features_chunk.shape[1] > 7 else [0.05]
+        mean_intensity = float(np.mean(intensities))
         
+        # Verify speech is in a calm, non-shouted range
         if mean_intensity > self.voice_max_intensity:
             return {
                 "status": "recalibration_needed",
-                "reason": f"Vocal intensity too high: {mean_intensity:.3f} (expected silence/low noise < {self.voice_max_intensity})"
+                "reason": f"Vocal intensity excessively high/shouting: {mean_intensity:.3f}"
             }
 
-        return {"status": "verified", "reason": "Voice baseline is suitably quiet"}
+        # Verify pitch if available (index 0) is in human speaking range
+        f0_vals = [f for f in features_chunk[:, 0] if f > 40]
+        if f0_vals:
+            mean_f0 = float(np.median(f0_vals))
+            if mean_f0 < 50 or mean_f0 > 550:
+                return {
+                    "status": "low_confidence",
+                    "reason": f"Vocal fundamental frequency outside typical range: {mean_f0:.1f} Hz"
+                }
+
+        return {"status": "verified", "reason": "Natural vocal baseline verified"}
 
     def verify_physio_baseline(self, features_chunk):
         """

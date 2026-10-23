@@ -1,21 +1,21 @@
 // frontend/src/utils/validateInputs.js
 
-export function validateAnalysisInputs({ faceImage, voiceFile, eegData, gsrData, eegFile, gsrFile }) {
+export function validateAnalysisInputs({ faceFile, voiceFile, eegData, gsrData, eegFile, gsrFile }) {
   const errors = [];
 
   // Must have at least one modality
-  const hasModality = faceImage || voiceFile || eegFile || gsrFile || eegData?.trim() || gsrData?.trim();
+  const hasModality = faceFile || voiceFile || eegFile || gsrFile || eegData?.trim() || gsrData?.trim();
   if (!hasModality) {
-    errors.push('Provide at least one input: photo, voice recording, or EEG/GSR data.');
+    errors.push('Provide at least one input: photo, voice recording, or GSR data.');
   }
 
   // Face file validation
-  if (faceImage) {
+  if (faceFile) {
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    if (!validTypes.includes(faceImage.type)) {
+    if (!validTypes.includes(faceFile.type)) {
       errors.push('Face image must be JPG or PNG format.');
     }
-    if (faceImage.size > 10 * 1024 * 1024) {
+    if (faceFile.size > 10 * 1024 * 1024) {
       errors.push('Face image must be under 10MB.');
     }
   }
@@ -24,8 +24,7 @@ export function validateAnalysisInputs({ faceImage, voiceFile, eegData, gsrData,
   if (voiceFile) {
     const validTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg',
                         'audio/webm', 'audio/m4a'];
-    const baseType = voiceFile.type.split(';')[0];
-    if (!validTypes.includes(baseType)) {
+    if (!validTypes.some(t => voiceFile.type.includes(t.split('/')[1]))) {
       errors.push('Voice recording must be WAV, MP3, OGG, WebM, or M4A format.');
     }
     if (voiceFile.size > 50 * 1024 * 1024) {

@@ -34,6 +34,7 @@ desktop.ini
 .idea/
 
 # Local workspace research / datasets excluded from deployment
+*.zip
 data/
 datasets/
 research/

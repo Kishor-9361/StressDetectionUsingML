@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { API_BASE } from '../config';
+
+
+
 // Compute 18 stress indicators from MediaPipe landmarks in browser
 function computeStressIndicators(landmarks, imageWidth, imageHeight, history) {
   const pt = (i) => ({
@@ -107,7 +109,6 @@ let globalMesh = null;
 
 export default function FaceStream({ onResult, onIndicatorsUpdate, active, calibrationMode = false, userId = 'default' }) {
   const videoRef  = useRef(null);
-  const canvasRef = useRef(null);
   const camRef    = useRef(null);
   const histRef   = useRef([]);
   const lastSend  = useRef(0);
@@ -171,17 +172,7 @@ export default function FaceStream({ onResult, onIndicatorsUpdate, active, calib
   }, [libsReady]);
 
   const handleResults = useCallback((results) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    const iw = videoRef.current?.videoWidth  || 320;
-    const ih = videoRef.current?.videoHeight || 240;
-
-    if (canvas && iw && ih) {
-      canvas.width = iw;
-      canvas.height = ih;
-      ctx.clearRect(0, 0, iw, ih);
-    }
-
+    frameCount.current++;
     if (!results.multiFaceLandmarks?.length) {
       const now = Date.now();
       if (onIndicatorsUpdateRef.current && (now - lastIndicatorsSend.current > 500)) {
@@ -192,35 +183,8 @@ export default function FaceStream({ onResult, onIndicatorsUpdate, active, calib
     }
 
     const lm = results.multiFaceLandmarks[0];
-    
-    if (ctx && iw && ih) {
-      let minX = iw, minY = ih, maxX = 0, maxY = 0;
-      for (const p of lm) {
-        const x = p.x * iw;
-        const y = p.y * ih;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-      // Add a slight margin
-      const padding = 15;
-      minX = Math.max(0, minX - padding);
-      minY = Math.max(0, minY - padding);
-      maxX = Math.min(iw, maxX + padding);
-      maxY = Math.min(ih, maxY + padding);
-      
-      ctx.strokeStyle = 'rgba(165, 200, 255, 0.8)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-      // Draw corner accents
-      ctx.beginPath();
-      ctx.moveTo(minX, minY + 10); ctx.lineTo(minX, minY); ctx.lineTo(minX + 10, minY);
-      ctx.moveTo(maxX, minY + 10); ctx.lineTo(maxX, minY); ctx.lineTo(maxX - 10, minY);
-      ctx.moveTo(minX, maxY - 10); ctx.lineTo(minX, maxY); ctx.lineTo(minX + 10, maxY);
-      ctx.moveTo(maxX, maxY - 10); ctx.lineTo(maxX, maxY); ctx.lineTo(maxX - 10, maxY);
-      ctx.stroke();
-    }
+    const iw = videoRef.current?.videoWidth  || 320;
+    const ih = videoRef.current?.videoHeight || 240;
 
     const indicators = computeStressIndicators(lm, iw, ih, histRef.current);
 
@@ -237,113 +201,98 @@ export default function FaceStream({ onResult, onIndicatorsUpdate, active, calib
       onIndicatorsUpdateRef.current(indicators);
     }
 
-    // Send to backend every SEND_INTERVAL_MS via Web Worker
-    if (now - lastSend.current > SEND_INTERVAL_MS) {
+    // Send to backend every SEND_INTERVAL_MS (or faster 200ms during calibration) via Web Worker
+    const sendInterval = calibrationModeRef.current ? 200 : SEND_INTERVAL_MS;
+    if (now - lastSend.current > sendInterval) {
       lastSend.current = now;
       if (workerRef.current) {
         workerRef.current.postMessage({ 
           indicators, 
           timestamp: now,
           calibrationMode: calibrationModeRef.current,
-          userId: userIdRef.current,
-          apiBase: API_BASE
+          userId: userIdRef.current
         });
       }
     }
   }, []);
 
   useEffect(() => {
-    let localStream = null;
-    let animFrameId = null;
-
-    if (!active) {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
+    if (!active || !libsReady) {
+      if (camRef.current) {
+        camRef.current.stop();
+        camRef.current = null;
       }
       if (fpsTimer.current) {
         clearInterval(fpsTimer.current);
         fpsTimer.current = null;
       }
-      setFps(0);
       return;
     }
 
-    // Direct HTML5 getUserMedia stream for 100% reliable camera display across browsers
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
-        .then(stream => {
-          localStream = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play().catch(e => console.warn("Video play exception:", e));
-          }
+    const FaceMeshClass = window.FaceMesh;
+    const CameraClass = window.Camera;
 
-          // Initialize MediaPipe FaceMesh for landmark detection
-          const FaceMeshClass = window.FaceMesh;
-          if (FaceMeshClass) {
-            if (!globalMesh) {
-              globalMesh = new FaceMeshClass({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-              });
-              globalMesh.setOptions({
-                maxNumFaces: 1,
-                refineLandmarks: false,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5,
-              });
-            }
+    if (!FaceMeshClass || !CameraClass) return;
 
-            globalMesh.onResults(handleResults);
-
-            let frameCounter = 0;
-            const processFrame = async () => {
-              frameCounter++;
-              if (frameCounter % 2 === 0 && videoRef.current && videoRef.current.readyState >= 2 && globalMesh) {
-                try {
-                  await globalMesh.send({ image: videoRef.current });
-                  frameCount.current++;
-                } catch (e) {
-                  // Ignore frame send exception
-                }
-              }
-              animFrameId = requestAnimationFrame(processFrame);
-            };
-            animFrameId = requestAnimationFrame(processFrame);
-          }
-        })
-        .catch(err => {
-          console.error("Camera access error:", err);
-        });
+    // Initialize singleton instance once
+    if (!globalMesh) {
+      globalMesh = new FaceMeshClass({
+        locateFile: (file) => `/mediapipe/face_mesh/${file}`,
+      });
+      globalMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: false,  // false = faster, saves ~20ms per frame
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
     }
 
+    // Bind results handler immediately upon starting the camera
+    globalMesh.onResults(handleResults);
+
+    let frameCounter = 0;
+
+    const cam = new CameraClass(videoRef.current, {
+      onFrame: async () => {
+        frameCounter++;
+        // Skip every other frame to process landmarks at 15fps, saving 50% CPU
+        if (frameCounter % 2 !== 0) return;
+
+        if (videoRef.current && globalMesh) {
+          try {
+            await globalMesh.send({ image: videoRef.current });
+          } catch (e) {
+            console.error("Error sending frame to MediaPipe mesh:", e);
+          }
+        }
+      },
+      width: 320,   // lower resolution = much less memory and CPU
+      height: 240,
+    });
+    cam.start();
+    camRef.current = cam;
+
+    // FPS counter
     fpsTimer.current = setInterval(() => {
       setFps(frameCount.current);
       frameCount.current = 0;
     }, 1000);
 
     return () => {
-      if (animFrameId) cancelAnimationFrame(animFrameId);
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
+      if (camRef.current) {
+        camRef.current.stop();
+        camRef.current = null;
       }
       if (fpsTimer.current) {
         clearInterval(fpsTimer.current);
         fpsTimer.current = null;
       }
     };
-  }, [active, handleResults]);
+  }, [active, libsReady, handleResults]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, overflow: 'hidden' }}>
-      <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover', background: 'var(--chat-bg)', display: 'block', transform: 'scaleX(-1)' }} playsInline />
-      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', pointerEvents: 'none' }} />
+    <div style={{ position: 'relative', display: 'inline-block', border: 'var(--glass-border)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--glass-shadow)' }}>
+      <video ref={videoRef} style={{ width: 320, height: 240, background: 'var(--chat-bg)', display: 'block', transform: 'scaleX(-1)' }} playsInline />
       {active && (
         <div style={{ position: 'absolute', top: 8, right: 8, background: 'var(--card-bg)',
                        color: 'var(--primary-color)', borderRadius: 6, padding: '3px 10px',
@@ -352,7 +301,7 @@ export default function FaceStream({ onResult, onIndicatorsUpdate, active, calib
         </div>
       )}
       {!active && (
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: 320, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
           <span>Camera Standby</span>
         </div>
       )}
