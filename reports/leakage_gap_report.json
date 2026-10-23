@@ -1,0 +1,23 @@
+{
+  "model": "RandomForestClassifier",
+  "view": "view_physio_all",
+  "sample_count": 1394,
+  "subject_count": 64,
+  "loso": {
+    "accuracy_default": 0.6793400286944046,
+    "accuracy_optimal": 0.6736011477761836,
+    "optimal_threshold": 0.45,
+    "macro_f1_optimal": 0.6303156657867572
+  },
+  "random_kfold": {
+    "accuracy_default": 0.7647058823529411,
+    "accuracy_optimal": 0.7890961262553802,
+    "optimal_threshold": 0.4,
+    "macro_f1_optimal": 0.7757562227927224
+  },
+  "delta_leak_default": 0.08536585365853655,
+  "delta_leak_optimal": 0.11549497847919654,
+  "delta_macro_f1": 0.14544055700596514,
+  "grl_recommended": true,
+  "decision_threshold_cutoff": 0.05
+}

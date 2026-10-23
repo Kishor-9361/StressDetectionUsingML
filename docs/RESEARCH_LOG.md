@@ -628,3 +628,42 @@ Executed `scripts/train_tier0.py` across all 6 classical architectures on `view_
 
 **Next:** Tier 2 Leakage-Gap Test (per `MODEL_TRAINING_PIPELINE.md` §B.3) to test subject leakage risk before deciding on adversarial identity suppression (GRL), followed by Tier 1 Sequence Models and Tier 3 Fusion.
 
+---
+
+### 2026-10-23 (entry 10) — Tier 2 Leakage-Gap Test Complete: Subject Identity Leakage Confirmed (Δ_leak = +8.5% to +11.6%)
+
+**Question:** Does subject identity leakage exist when evaluating stress models without subject-grouped splits, and is the leakage gap large enough (Δ_leak >= 5%) to justify an adversarial Gradient Reversal Layer (GRL) head?
+
+**Protocol (`scripts/run_leakage_gap_test.py`):**
+1. Evaluated top-performing baseline (**Random Forest** on `view_physio_all`, 1,394 samples, 64 subjects, 132 features).
+2. Protocol A (Strict Subject-Grouped LOSO): 64 folds, test subject completely withheld from training fold.
+3. Protocol B (Random Row-Wise Stratified K-Fold): 10 folds, rows shuffled uniformly across folds regardless of subject identity.
+4. Threshold sweep across both out-of-fold prediction distributions.
+5. Compute `Δ_leak = Acc_random - Acc_LOSO`.
+
+**Verified Results (`reports/leakage_gap_report.json`):**
+- **Default Threshold (0.50):**
+  - Subject-Grouped LOSO Accuracy: **67.93%**
+  - Random Row-Wise Accuracy: **76.47%**
+  - **`Δ_leak_default = +8.54%`**
+- **Optimal Decision Threshold:**
+  - Subject-Grouped LOSO Accuracy: **67.36%** (Macro F1 = 0.6303 at th=0.45)
+  - Random Row-Wise Accuracy: **78.91%** (Macro F1 = 0.7758 at th=0.40)
+  - **`Δ_leak_optimal = +11.55%`**
+  - **`Δ_macro_f1 = +14.54%`** (0.6303 -> 0.7758)
+- Artifact generated: `docs/verification/leakage_gap_comparison.png`.
+
+**Analysis & Decision:**
+1. **Empirical Confirmation of Prior Audit Observations:**
+   - Shuffling rows randomly allows classifiers to memorize subject-specific physiological baselines (resting heart rate, skin conductance level offset, respiration cadence), inflating apparent accuracy from 67.4% up to 78.9% and Macro F1 from 0.630 to 0.776.
+   - This directly explains why previous un-grouped benchmarks in the literature and prior branches reported inflated 77-80% numbers that collapsed when tested on new subjects.
+2. **GRL Decision Criterion (§B.3):**
+   - The observed `Δ_leak` (+8.54% / +11.55%) is substantially above the 5% threshold defined in `MODEL_TRAINING_PIPELINE.md`.
+   - **Decision: Adversarial subject-identity suppression (GRL) is mathematically indicated.**
+   - Per §B.3, the GRL adversarial weight must be initialized conservatively at `λ_adv = 0.02` to prevent the training collapse observed in earlier experiments at `λ = 0.15`.
+
+**Concluded:** Tier 2 Leakage-Gap Test PASSED with unambiguous positive confirmation of identity leakage.
+
+**Next:** Implement Tier 1 Sequence / Deep Representation Models (e.g. 1D-CNN / GRU on windowed features) with optional adversarial GRL head (`λ = 0.02`) and Tier 3 Fusion.
+
+
