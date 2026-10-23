@@ -445,3 +445,38 @@ User shared a "Master Audit and Phase Evaluation Report" (13-phase narrative of 
 **Still not this project's target**: no number from either the "Master Audit and Phase Evaluation Report" or the earlier repo audit's claimed-doc values. Only artifact-verified numbers (ARTIFACT-tagged in the first audit) or our own freshly-generated StressID-only metrics.json outputs count.
 
 **Next**: produce `EXTRACTION_AND_EDA_PIPELINE.md` — the detailed extraction + EDA execution spec the user asked for next, before any model training.
+
+---
+
+### 2026-10-23 (entry 4) — Stage 0 Subject-Count Reconciliation Resolved
+
+**Question:** Why did observed disk counts (65 physio, 53 video, 54 audio) diverge from `Technical-info_final.pdf`'s documented counts (65 physio, 54 video, 55 audio)?
+
+**Ran:** `scripts/reconcile_subjects.py` cross-referencing:
+1. Raw disk folders (`Datasets/stressid/{Physiological, Videos, Audio}`) and metadata (`labels.csv`, `self_assessments.csv`).
+2. Official baseline feature CSVs (`all_physiological_features.csv`, `video11tasks_aus_gaze_mean_std.csv`, `HCfeatures.csv`).
+3. Documented Technical Info manifest.
+
+**Result — Discrepancy fully identified and resolved:**
+- **Physio**: 65 subjects on disk == 65 subjects in `all_physiological_features.csv` (set difference is empty, 100% identical).
+- **The Off-By-One Culprit**: Subject **`j1u8`**.
+  - `j1u8` has physiological signals on disk (`Datasets/stressid/Physiological/j1u8` exists).
+  - `j1u8` has **NO** video directory and **NO** audio directory on disk (`Datasets/stressid/Videos/j1u8` and `Datasets/stressid/Audio/j1u8` do not exist).
+  - In `Technical-info_final.pdf`, `j1u8` was annotated as `missing_tasks: j1u8: [Video1] (playback failure)` implying video was otherwise expected, but the full subject folder for both video and audio is absent from the distributed dataset.
+  - Therefore, `j1u8` is in reality **physio-only** on disk.
+- **Exact Modality Breakdown on Disk (Total = 65 subjects)**:
+  - **Tri-modal (Physio + Video + Audio)**: 52 subjects
+  - **Physio-only**: 10 subjects (`hh2e, wfsl, 37ir, hvpa, ql3b, r0a3, uyrl, qx2o, dmbd` + `j1u8`)
+  - **Physio + Audio only**: 2 subjects (`u3v9, 7m3c`)
+  - **Physio + Video only**: 1 subject (`f6q3`)
+  - Verification: 52 + 10 + 2 + 1 = 65 total physio subjects.
+  - Video total on disk: 52 + 1 = 53 subjects.
+  - Audio total on disk: 52 + 2 = 54 subjects.
+- **Labels Ground Truth**:
+  - `self_assessments.csv` contains all 65 subjects.
+  - `labels.csv` contains 64 subjects; `hh2e` is excluded because `hh2e` has missing valence/arousal ratings (`missing_labels: hh2e: [arousal, valence]`).
+
+**Concluded:** The off-by-one is resolved with zero unexplained drift. `config/subjects.yaml` is generated programmatically from disk. Stage 0 gate PASSED.
+
+**Next:** Proceed with Stage 1 Signal Cleaning (`01_clean_signals.py`).
+

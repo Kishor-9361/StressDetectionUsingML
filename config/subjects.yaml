@@ -1,0 +1,185 @@
+stressid:
+  all_subjects:
+  - 2ea4
+  - 2hpu
+  - 2z7d
+  - 37ir
+  - 45lx
+  - 4e8r
+  - 4woj
+  - 5f7t
+  - 6g6y
+  - 6k5f
+  - 71i5
+  - 7h5u
+  - 7m3c
+  - 8g4y
+  - 8i4i
+  - 9j3o
+  - 9t6n
+  - 9txq
+  - a1k9
+  - b2l8
+  - b9w0
+  - bfl5
+  - c3m7
+  - chdf
+  - ctzy
+  - cxj0
+  - d4n6
+  - dmbd
+  - e5p4
+  - f6q3
+  - g7r2
+  - g9j5
+  - h7j3
+  - h8r2
+  - h8s1
+  - hh2e
+  - hvpa
+  - i9t9
+  - iqyg
+  - j1u8
+  - j9h8
+  - k2v7
+  - k67g
+  - kkf5
+  - kycf
+  - m8g5
+  - p9i3
+  - ql3b
+  - qw5t
+  - qx2o
+  - r0a3
+  - r3zm
+  - r5s8
+  - t6v9
+  - tmvd
+  - u3v9
+  - uymz
+  - uyrl
+  - v8mh
+  - w2t5
+  - wfsl
+  - wssm
+  - x1q3
+  - y8c3
+  - y9z6
+  counts:
+    physio: 65
+    video: 53
+    audio: 54
+    tri_modal: 52
+  physio_only:
+  - 37ir
+  - dmbd
+  - hh2e
+  - hvpa
+  - j1u8
+  - ql3b
+  - qx2o
+  - r0a3
+  - uyrl
+  - wfsl
+  physio_audio_only:
+  - 7m3c
+  - u3v9
+  physio_video_only:
+  - f6q3
+  tri_modal_subjects:
+  - 2ea4
+  - 2hpu
+  - 2z7d
+  - 45lx
+  - 4e8r
+  - 4woj
+  - 5f7t
+  - 6g6y
+  - 6k5f
+  - 71i5
+  - 7h5u
+  - 8g4y
+  - 8i4i
+  - 9j3o
+  - 9t6n
+  - 9txq
+  - a1k9
+  - b2l8
+  - b9w0
+  - bfl5
+  - c3m7
+  - chdf
+  - ctzy
+  - cxj0
+  - d4n6
+  - e5p4
+  - g7r2
+  - g9j5
+  - h7j3
+  - h8r2
+  - h8s1
+  - i9t9
+  - iqyg
+  - j9h8
+  - k2v7
+  - k67g
+  - kkf5
+  - kycf
+  - m8g5
+  - p9i3
+  - qw5t
+  - r3zm
+  - r5s8
+  - t6v9
+  - tmvd
+  - uymz
+  - v8mh
+  - w2t5
+  - wssm
+  - x1q3
+  - y8c3
+  - y9z6
+  missing_tasks:
+    wfsl:
+    - Relax
+    h7j3:
+    - Relax
+    7h5u:
+    - Video2
+    j1u8:
+    - Video1
+    k67g:
+    - Breathing
+    - Video1
+    h8r2:
+    - Breathing
+  missing_labels:
+    hh2e:
+    - arousal
+    - valence
+    - binary-stress
+    - affect3-class
+  no_image_publication:
+  - dmbd
+  - 45lx
+  - cxj0
+  - 5f7t
+  - y9z6
+  - u3v9
+  - 7m3c
+  - x1q3
+  - 9j3o
+  - c3m7
+  - a1k9
+  - h8s1
+  baseline_task:
+    ecg: Breathing
+    eda: Breathing
+    resp: Relax
+    face: Breathing
+    voice: null
+  baseline_task_overrides:
+    k67g:
+      face: Relax
+    h8r2:
+      face: Relax
