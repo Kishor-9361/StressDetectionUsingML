@@ -1,0 +1,51 @@
+# ==============================================================================
+# Multimodal Stress Detection — Production Deployment Service .gitignore
+# ==============================================================================
+
+# Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+frontend/node_modules/
+
+# OS Artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Local workspace research / datasets excluded from deployment
+data/
+datasets/
+research/
+research.zip
+webapp/
+docs/
+output/
+benchmark_results/
+phase3_production/
+phase3_results/
+scripts/
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep

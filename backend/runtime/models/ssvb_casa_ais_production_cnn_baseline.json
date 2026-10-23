@@ -1,0 +1,9 @@
+{
+  "architecture": "CNNBaseline",
+  "model_type": "cnn_baseline",
+  "hidden_dim": 16,
+  "num_subjects": 91,
+  "trained_on": "combined",
+  "optimal_threshold": 0.14,
+  "timestamp": "2026-07-23_14-54-27"
+}

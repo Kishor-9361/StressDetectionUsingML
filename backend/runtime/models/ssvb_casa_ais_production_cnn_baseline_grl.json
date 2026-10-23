@@ -1,0 +1,13 @@
+{
+  "architecture": "CNNBaseline+GRL",
+  "model_type": "cnn_baseline_grl",
+  "hidden_dim": 16,
+  "num_subjects": 68,
+  "trained_on": "combined",
+  "optimal_threshold": 0.33999999999999997,
+  "per_dataset_thresholds": {
+    "stressid": 0.34,
+    "wesad": 0.33
+  },
+  "timestamp": "2026-07-23_17-49-18"
+}
