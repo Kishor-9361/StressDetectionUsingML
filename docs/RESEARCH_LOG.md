@@ -553,4 +553,29 @@ User shared a "Master Audit and Phase Evaluation Report" (13-phase narrative of 
 
 **Concluded:** The EDA HTML report is now 100% consistent with the underlying parquet data, figures, and verified test assertions. Zero hand-typed metrics remain.
 
-**Next:** Phase 3 — Streamlit Dashboard live data viewer (`scripts/run_dashboard.py`).
+**Next:** Phase 4 — Model Training Pipeline (Part A Combine & Part B Tier 0 Baselines).
+
+---
+
+### 2026-10-23 (entry 8) — Part A Combine Complete (Gate PASSED)
+
+**Question:** Can we construct scope-specific joined feature views without repeating the old project's bug of collapsing into a single all-modality intersection table that silently drops subjects?
+
+**Ran:**
+1. `scripts/combine_features.py`:
+   - Built `data/processed/views/physio_combined.parquet` (ECG+EDA+RESP, 1,476 rows, 65 subjects, 132 features).
+   - Built `data/processed/views/view_physio_all.parquet` (identical to physio_combined, largest N scope).
+   - Built `data/processed/views/view_physio_face.parquet` (52 subjects, 1,190 rows, 216 features).
+   - Built `data/processed/views/view_physio_voice.parquet` (53 subjects, 1,213 rows, 272 features).
+   - Built `data/processed/views/view_tri_modal.parquet` (50 subjects, 1,144 rows, 356 features, plus `is_talking_task` flag for 350 tri-sensor windows).
+   - Emitted `data/processed/manifests/combine_manifest.json` detailing exact subject pools, row counts, and source table provenance.
+2. `tests/test_combine_gates.py`: 4/4 pytest checks PASSED.
+
+**Result:**
+- `view_physio_all` row count (1,476) and subject count (65) matches the Stage-0 manifest exactly with zero silent drops.
+- Each narrower view's subject list is a verified proper subset of `view_physio_all` and strictly cross-checked against `coverage_report.json`.
+- `j1u8` is confirmed physio-only, retaining its place in `view_physio_all`.
+
+**Concluded:** Part A (Combine) gate PASSED.
+
+**Next:** Part B.0 Shared Training Infrastructure (`cv.py`, `threshold.py`, `smoketest.py`, `artifacts.py`) and Part B.1 Tier 0 Classical Baselines.
