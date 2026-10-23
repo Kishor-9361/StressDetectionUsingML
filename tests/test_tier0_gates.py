@@ -28,6 +28,9 @@ REQUIRED_MODELS = [
     "xgboost_view_physio_voice",
     "rf_view_tri_modal",
     "xgboost_view_tri_modal",
+    "gru_view_physio_all",
+    "cnn_gru_view_physio_all",
+    "cnn_gru_grl_view_physio_all",
 ]
 
 MANDATED_ARTIFACTS = [

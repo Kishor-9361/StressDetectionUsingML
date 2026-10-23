@@ -48,9 +48,6 @@ Do not re-fetch the StressID paper or the StressID baseline repo. Their relevant
   <phase tag>: <one-line summary of what this phase produced>
 
   <2-4 lines: what gate it passed, what artifact/metric proves it>
-
-  Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01FPpkJ7Kn41vG1X3cLWTiAv
   ```
   Phase tags: `phase0`, `phase1-extract`, `phase2-eda`, `phase3-dashboard`, `phase4-train:<model_name>`, `phase5-report`.
 - Never force-push, never amend. If a phase's gate fails, fix forward with a new commit — the failed attempt stays in history (this project has already suffered once from undocumented silent overwrites; don't repeat it with git itself).

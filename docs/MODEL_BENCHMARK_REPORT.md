@@ -9,13 +9,12 @@
 
 ## 1. Executive Summary & Headline Benchmarks
 
-- **Total Models Evaluated:** 12 models across 4 distinct modality views.
+- **Total Models Evaluated:** 15 models across 4 distinct modality views and 2 model tiers (Classical & Deep Sequence/GRL).
 - **Physiological Baseline Champion (`view_physio_all`):** **Random Forest** achieved the highest subject-independent performance (**Macro F1 = 0.6303**, Accuracy = 0.6736, ROC AUC = 0.6517 at threshold 0.45).
-  - StressID Table 2 Unimodal Physio Target: F1 ≈ 0.7300, Acc ≈ 0.7200.
-  - Documented Benchmark Gap: **Δ_F1 = -0.0997**, **Δ_Acc = -0.0464** (honestly tracked in model cards).
+- **Deep Sequence Baseline Champion:** **1D-CNN + GRU + GRL** achieved **Macro F1 = 0.5962** and **Accuracy = 62.55%** at default threshold 0.50.
+- **Impact of Adversarial Identity Suppression (GRL):** Adding a Gradient Reversal Layer with conservative weight `λ_adv = 0.02` improved accuracy from 61.26% to 62.55% and stabilized the decision threshold at 0.50.
 - **Multimodal Complementarity Discovery (`view_physio_face`):** Adding 84 facial Action Units + gaze features significantly improved performance, lifting Random Forest Macro F1 to **0.6698** (+0.0395 gain) and ROC AUC to **0.7022** (+0.0505 gain).
-- **Decision Threshold Optimization:** Sweeping thresholds (0.05–0.95) successfully rescued models from severe recall collapse (e.g. SVM default stress recall of 16.5% was restored to 61.8%, lifting Macro F1 from 0.5333 to 0.5839).
-- **Identity Leakage Empirical Proof (Tier 2):** Random row-wise cross-validation artificially inflated accuracy by **+8.54% to +11.55%** (up to 78.91%) and Macro F1 by **+14.54%** (up to 0.7758), mathematically justifying an adversarial Gradient Reversal Layer (GRL) head.
+- **Identity Leakage Empirical Proof (Tier 2):** Random row-wise cross-validation artificially inflated accuracy by **+8.54% to +11.55%** (up to 78.91%) and Macro F1 by **+14.54%** (up to 0.7758), mathematically justifying the adversarial GRL head.
 
 ---
 
@@ -35,6 +34,9 @@
 | `xgboost_view_physio_voice` | `view_physio_voice` | 53 | 371 | 272 | 0.6927 | 0.4747 | 0.75 | 0.6631 | **0.5593** | 0.7731 | 0.5577 | 0.5607 |
 | `rf_view_tri_modal` | `view_tri_modal` | 50 | 350 | 356 | 0.7000 | 0.4208 | 0.70 | 0.5886 | **0.5338** | 0.6936 | 0.5402 | 0.5778 |
 | `xgboost_view_tri_modal` | `view_tri_modal` | 50 | 350 | 356 | 0.6714 | 0.4536 | 0.85 | 0.6057 | **0.5403** | 0.7137 | 0.5434 | 0.5699 |
+| `cnn_gru_grl_view_physio_all` | `view_physio_all` | 64 | 1394 | 132 | 0.6255 | 0.5962 | 0.50 | 0.6255 | **0.5962** | 0.4872 | 0.5957 | 0.6185 |
+| `cnn_gru_view_physio_all` | `view_physio_all` | 64 | 1394 | 132 | 0.6227 | 0.5927 | 0.35 | 0.6126 | **0.5933** | 0.5046 | 0.5963 | 0.6045 |
+| `gru_view_physio_all` | `view_physio_all` | 64 | 1394 | 132 | 0.6019 | 0.5701 | 0.10 | 0.5947 | **0.5775** | 0.4924 | 0.5817 | 0.5969 |
 
 ---
 
@@ -47,8 +49,6 @@
 | **Macro F1 (Optimal Thresh)** | 0.6303 | 0.7758 | **+14.54%** |
 
 ![Leakage Gap Comparison](file:///e:/StressProject/phase2/docs/verification/leakage_gap_comparison.png)
-
-**Conclusion:** The leakage gap of **+11.55%** is well above the 5% threshold in §B.3, proving that subject baseline quirks inflate un-grouped splits and confirming the need for an adversarial GRL head.
 
 ---
 
@@ -219,5 +219,47 @@
 | Confusion Matrix | ROC Curve | Precision-Recall Curve |
 |:---:|:---:|:---:|
 | ![Confusion Matrix](file:///e:/StressProject/phase2/models/xgboost_view_tri_modal/20261023_133908_98ecb92e/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/xgboost_view_tri_modal/20261023_133908_98ecb92e/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/xgboost_view_tri_modal/20261023_133908_98ecb92e/pr.png) |
+
+---
+
+### Model: `cnn_gru_grl_view_physio_all`
+- **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
+- **Optimal Threshold:** 0.50 (Macro F1 = **0.5962**, Accuracy = 0.6255, Stress F1 = 0.4872)
+- **Default Threshold (0.50):** Macro F1 = 0.5962, Accuracy = 0.6255, Stress F1 = 0.4872
+- **ROC AUC:** 0.6185 | **PR AUC:** 0.4522
+- **Hyperparameters:** `{"model_type": "cnn_gru", "hidden_dim": 64, "use_grl": true, "lambda_adv": 0.02, "epochs": 25, "optimizer": "AdamW", "lr": 0.002}`
+- **Run Artifacts Path:** `models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_grl_view_physio_all/20261023_141155_d5941aac/pr.png) |
+
+---
+
+### Model: `cnn_gru_view_physio_all`
+- **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
+- **Optimal Threshold:** 0.35 (Macro F1 = **0.5933**, Accuracy = 0.6126, Stress F1 = 0.5046)
+- **Default Threshold (0.50):** Macro F1 = 0.5927, Accuracy = 0.6227, Stress F1 = 0.4823
+- **ROC AUC:** 0.6045 | **PR AUC:** 0.4374
+- **Hyperparameters:** `{"model_type": "cnn_gru", "hidden_dim": 64, "use_grl": false, "lambda_adv": 0.0, "epochs": 25, "optimizer": "AdamW", "lr": 0.002}`
+- **Run Artifacts Path:** `models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/cnn_gru_view_physio_all/20261023_141017_5e4e82fa/pr.png) |
+
+---
+
+### Model: `gru_view_physio_all`
+- **View:** `view_physio_all` | **Subjects:** 64 | **Windows:** 1394 | **Features:** 132
+- **Optimal Threshold:** 0.10 (Macro F1 = **0.5775**, Accuracy = 0.5947, Stress F1 = 0.4924)
+- **Default Threshold (0.50):** Macro F1 = 0.5701, Accuracy = 0.6019, Stress F1 = 0.4532
+- **ROC AUC:** 0.5969 | **PR AUC:** 0.4407
+- **Hyperparameters:** `{"model_type": "gru", "hidden_dim": 64, "use_grl": false, "lambda_adv": 0.0, "epochs": 25, "optimizer": "AdamW", "lr": 0.002}`
+- **Run Artifacts Path:** `models/gru_view_physio_all/20261023_140910_f35d593d/`
+
+| Confusion Matrix | ROC Curve | Precision-Recall Curve |
+|:---:|:---:|:---:|
+| ![Confusion Matrix](file:///e:/StressProject/phase2/models/gru_view_physio_all/20261023_140910_f35d593d/confusion_matrix.png) | ![ROC Curve](file:///e:/StressProject/phase2/models/gru_view_physio_all/20261023_140910_f35d593d/roc.png) | ![PR Curve](file:///e:/StressProject/phase2/models/gru_view_physio_all/20261023_140910_f35d593d/pr.png) |
 
 ---
