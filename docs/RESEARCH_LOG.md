@@ -535,5 +535,22 @@ User shared a "Master Audit and Phase Evaluation Report" (13-phase narrative of 
 
 **Next:** Phase 3 — Dashboard implementation (`scripts/run_dashboard.py`).
 
+---
 
+### 2026-10-23 (entry 7) — Programmatic Verification and Correction of EDA Report Metrics
 
+**Question:** Why was `docs/01_stressid_eda_report.html` inconsistent with the underlying data and EDA notebook figures?
+
+**Audit of Discrepancies:**
+1. **Section 2 (Label Distribution):** Previously stated continuous rating mean = 4.14, median = 4.00, std = 2.82. Verified data from `win_df['rating_stress']`: count = 1,412, mean = 3.55, std = 2.49, median = 3.00, IQR = [1.00 – 6.00]. Binary valid count = 1,394 (879 non-stress = 63.06%, 515 stress = 36.94%, 82 NaN/unlabeled).
+2. **Section 3 (Cohen's d Reactivity):** Previously reported 31 high, 22 moderate, 12 low reactors. Verified calculation against all 65 subjects: 50 high (d >= 0.8), 5 moderate (0.2 <= d < 0.8), and exactly 10 low/paradoxical reactors (d < 0.2): `['i9t9', 'e5p4', 'd4n6', 'h7j3', 'c3m7', 'j1u8', '71i5', 't6v9', 'cxj0', '9j3o']`.
+3. **Section 4 (Within-Task Dynamics):** Text previously quoted generic +-0.05 bounds that conflicted with data. Now dynamically aggregates sub-window trajectories across `Breathing` (w0=0.724, w1=-0.399, w2=-0.057, w3=0.150, w4=0.328), `Relax` (w0=-2.323, w1=-2.301, w2=-1.242, w3=-1.027), and videos.
+4. **Section 5 (Separability AUC):** Stated text previously reported AUC = 0.654 for meanHR and 0.582 for mean_eda, directly contradicting the embedded Figure 5.1 (which showed AUC = 0.667 and AUC = 0.502). Verified calculation: Calibrated `meanHR` AUC = 0.6674, Calibrated `meanRR` AUC = 0.5140, Calibrated `mean_eda` AUC = 0.5022, Face `mean_AU04_r` AUC = 0.4752.
+5. **Section 6 (Quality Triage):** Verified SQI metrics: `q_ecg >= 0.5` = 97.90% (1,445/1,476 windows), `q_eda > 0.0` = 99.93% (1,475/1,476 windows; only `r5s8_Counting3` fails), combined retention = 97.83% (1,444/1,476 windows).
+6. **Section 7 (Modality Complementarity):** Correlation matrix table dynamically generated: ECG-EDA r = 0.0888, ECG-RESP r = -0.0116, ECG-Voice r = 0.2233, EDA-RESP r = 0.0595, EDA-Face r = 0.0246, confirming near-complete orthogonality (|r| <= 0.22).
+
+**Ran:** Rewrote `scripts/build_rich_eda_report.py` to eliminate all hand-typed metrics, programmatically calculate all summaries, inject formatted HTML data tables for each section, and re-emit `docs/01_stressid_eda_report.html` (629 KB).
+
+**Concluded:** The EDA HTML report is now 100% consistent with the underlying parquet data, figures, and verified test assertions. Zero hand-typed metrics remain.
+
+**Next:** Phase 3 — Streamlit Dashboard live data viewer (`scripts/run_dashboard.py`).
