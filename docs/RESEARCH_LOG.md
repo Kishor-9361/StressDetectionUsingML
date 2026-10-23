@@ -480,3 +480,34 @@ User shared a "Master Audit and Phase Evaluation Report" (13-phase narrative of 
 
 **Next:** Proceed with Stage 1 Signal Cleaning (`01_clean_signals.py`).
 
+---
+
+### 2026-10-23 (entry 5) — Phase 1 Extraction and Baseline Anchoring Complete (Gate PASSED)
+
+**Question:** Can we produce reproducible, per-modality, baseline-anchored feature tables matching official baseline dimensions and verified against disk ground truth?
+
+**Ran:**
+1. `scripts/01_clean_signals.py`: NeuroKit2 Butterworth filtering (`method='biosppy'`, `sampling_rate=500`) across all 65 subjects and 774 task recordings.
+2. `scripts/02_build_window_index.py`: Constructed 1,476 total windows (7 interactive tasks full-task, 4 long tasks sub-windowed at 60s/30s stride, labels joined from `labels.csv`, `labels_supplementary.csv`, and `self_assessments.csv`).
+3. `scripts/extract_ecg.py`, `scripts/extract_eda.py`, `scripts/extract_resp.py`, `scripts/extract_face.py`, `scripts/extract_voice.py`: Emitted 5 separate parquets under `data/processed/features/` with no cross-modality merging or NaN imputation.
+4. `scripts/build_coverage_report.py`: Emitted `coverage_report.json` verifying 65 physio, 52 tri-modal disk, 10 physio-only, 2 physio-audio, 1 physio-video.
+5. `scripts/04_anchor_features.py`: Applied robust median/MAD calibration against calm tasks (`Breathing` for ECG/EDA/Face, `Relax` for Respiration; overrides for `k67g` and `h8r2`). Calibrated calm medians verified at 0.0000.
+6. `tests/test_extraction_gates.py`: Full pytest suite testing window count sanity, modality separation, manifest coverage, column counts, and calibration medians.
+
+**Result — All Phase 1 Gates Passed:**
+- Feature dimensions verified:
+  - ECG: 46 columns (35 HRV features matching paper Table 2 + 11 stat)
+  - EDA: 24 columns (tonic SCL, phasic SCR, peak dynamics)
+  - RESP: 62 columns (38 time/interval + 11 stat + 9 freq + 4 nonlinear)
+  - Face: 84 columns (18 AU means/stds + 2 gaze means/stds)
+  - Voice: 140 columns (handcrafted acoustic features)
+- Gate plots generated and saved to `docs/verification/`:
+  - `rpeak_spotcheck_2ea4.png`, `rpeak_spotcheck_45lx.png`, `rpeak_spotcheck_8g4y.png`
+  - `baseline_calibration_spotcheck.png`
+- Automated test suite: 5/5 tests PASSED.
+
+**Concluded:** Phase 1 extraction and calibration is completely reproduced from raw data with zero hand-typed numbers and full provenance.
+
+**Next:** Phase 2 — EDA notebook (`notebooks/01_stressid_eda.ipynb`).
+
+
