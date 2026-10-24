@@ -74,9 +74,9 @@ export default function Dashboard() {
   const [mode, setMode] = useState('upload'); // 'upload' or 'realtime'
   const [serverOnline, setServerOnline] = useState(true);
   
-  // Model selection state (High Spec Deep Champion vs Low Spec Classical RF)
-  const [activeModelKey, setActiveModelKey] = useState('cnn_grl');
-  const [activeModelName, setActiveModelName] = useState('CNN + GRL (Primary Deep Champion)');
+  // Model state (Production Multimodal Expert Fusion)
+  const [activeModelKey, setActiveModelKey] = useState('multimodal_expert');
+  const [activeModelName, setActiveModelName] = useState('Multimodal Expert Fusion');
   const [modelSwitching, setModelSwitching] = useState(false);
 
   // File states
@@ -767,24 +767,10 @@ export default function Dashboard() {
               <span>{serverOnline ? 'BACKEND ONLINE' : 'BACKEND OFFLINE'}</span>
             </div>
 
-            {/* Model Spec Selector (High Spec vs Low Spec) */}
-            <div className="model-spec-selector" title="Select Inference Champion according to host system hardware">
-              <button
-                className={`model-spec-btn ${activeModelKey === 'cnn_grl' ? 'active' : ''}`}
-                onClick={() => handleModelChange('cnn_grl')}
-                disabled={modelSwitching}
-              >
-                <span className="material-symbols-outlined fs-6">memory</span>
-                <span>High Spec (Deep CNN+GRL)</span>
-              </button>
-              <button
-                className={`model-spec-btn ${activeModelKey === 'random_forest' ? 'active' : ''}`}
-                onClick={() => handleModelChange('random_forest')}
-                disabled={modelSwitching}
-              >
-                <span className="material-symbols-outlined fs-6">speed</span>
-                <span>Low Spec (Random Forest)</span>
-              </button>
+            {/* Active Model Indicator */}
+            <div className="status-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} title="Authoritative multimodal inference model">
+              <span className="material-symbols-outlined fs-6" style={{ color: '#0054d6' }}>neurology</span>
+              <span>Multimodal Expert Fusion</span>
             </div>
 
 

@@ -1,150 +1,86 @@
 """
 runtime_engine.py
-Phase 7: Single authoritative inference engine.
+Single authoritative inference engine for the Multimodal Stress Detector.
 
-Loads ALL artifacts from VersionRegistry (not hardcoded filenames).
-Routes ALL inference through FeatureRuntimeLock.
-Owns fusion and explanation delegation.
-Provides a deterministic replay() path for regression tests.
+ONE production model: a three-expert fusion
+    face   -> GradientBoostingClassifier (18 geometric indicators)
+    voice  -> GradientBoostingClassifier (12 acoustic biomarkers)
+    physio -> CalibratedClassifierCV(GB + RF) (51 EEG/GSR features)
+combined with fixed reliability weights over whichever modalities are present.
+
+Artifacts are loaded through the VersionRegistry (hash-verified) from
+``models/expert_models``.
 """
 
 import os
 import sys
+import json
 import pickle
 import numpy as np
-
-try:
-    import torch
-    import torch.nn as nn
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-    class nn:
-        Module = object
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROJECT_ROOT = os.path.dirname(ROOT)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-research_path = os.path.join(PROJECT_ROOT, "research")
-if research_path not in sys.path:
-    sys.path.insert(0, research_path)
 
 from backend.core.feature_runtime_lock import FeatureRuntimeLock
 from backend.core.version_registry      import VersionRegistry
 
-if TORCH_AVAILABLE:
-    from backend.runtime.ssvb_casa_ais import SSVBCASA_AIS
+TORCH_AVAILABLE = False
 
-    class ModalityEncoder(nn.Module):
-        def __init__(self, input_dim, hidden_dim=16):
-            super().__init__()
-            self.conv = nn.Conv1d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, padding=1)
-            self.relu = nn.ReLU()
-            self.bn = nn.BatchNorm1d(hidden_dim)
-            self.gru = nn.GRU(hidden_dim, hidden_dim, batch_first=True)
-            self.classifier = nn.Linear(hidden_dim, 2)
-            
-        def forward(self, x):
-            logits, _ = self.forward_with_latent(x)
-            return logits
+MODALITIES = ("face", "voice", "physio")
 
-        def forward_with_latent(self, x):
-            x = x.permute(0, 2, 1)
-            x = self.conv(x)
-            x = self.bn(x)
-            x = self.relu(x)
-            x = x.permute(0, 2, 1)
-            gru_out, hidden = self.gru(x)
-            latent = gru_out[:, -1, :]
-            logits = self.classifier(latent)
-            return logits, latent
+# Reliability weights of each expert in the fusion (normalised over the
+# modalities that are actually present in a request).
+FUSION_WEIGHTS = {"face": 0.371, "voice": 0.474, "physio": 0.338}
 
-    class DynamicRouter(nn.Module):
-        def __init__(self, num_modalities=3):
-            super().__init__()
-            self.mlp = nn.Sequential(
-                nn.Linear(num_modalities * 2 + num_modalities, 16),
-                nn.ReLU(),
-                nn.Linear(16, num_modalities),
-                nn.Softmax(dim=1)
-            )
-        def forward(self, x):
-            return self.mlp(x)
+# Decision threshold on the fused stress probability at sensitivity=0.5.
+DECISION_THRESHOLD = 0.5
 
-    class CNNBaselineGRL(nn.Module):
-        """Primary Production Champion: 1D-CNN + Subject GRL (CNNBaselineGRL).
-        Trained under 15-fold LOSO cross-validation with subject identity suppression.
-        Weights: phase3_production/results/deploy/ssvb_casa_ais_production_cnn_baseline_grl.pt
-        Optimal Threshold: 0.34
-        Input: [B, T, total_feat_dim] where total_feat_dim=69."""
-        def __init__(self, total_feat_dim=69, hidden_dims=[64, 32, 16], num_classes=2, num_subjects=68, grl_alpha=0.02):
-            super().__init__()
-            layers = []
-            in_ch = total_feat_dim
-            for h in hidden_dims:
-                layers.extend([
-                    nn.Conv1d(in_ch, h, kernel_size=3, padding=1),
-                    nn.BatchNorm1d(h),
-                    nn.ReLU(),
-                ])
-                in_ch = h
-            self.conv_stack = nn.Sequential(*layers)
-            self.classifier = nn.Linear(hidden_dims[-1], num_classes)
-            self.subj_head = nn.Linear(hidden_dims[-1], num_subjects)
-            self.grl_alpha = grl_alpha
-
-        def forward(self, x):
-            if x.dim() == 2:
-                x = x.unsqueeze(1)
-            x = x.permute(0, 2, 1)
-            x = self.conv_stack(x)
-            x = x.mean(dim=2)
-            return self.classifier(x)
-
-    CNNBaseline = CNNBaselineGRL
-
-
-# ── Phase 4 optimal fusion weights ────────────────────────────────────────────
-FUSION_WEIGHTS = {"face": 0.30, "voice": 0.40, "physio": 0.30}
-
-# Model filename map — registry keys → pkl filenames (fallback when registry
-# doesn't carry the file path directly)
+# Model filename map — registry keys → (model pkl, scaler pkl) inside EXPERT_DIR
 _MODEL_FILES = {
-    "face_expert":   (os.path.join("fallback_models", "face_expert_lightweight.pkl"),  os.path.join("fallback_models", "face_scaler_lightweight.pkl")),
-    "voice_expert":  (os.path.join("fallback_models", "voice_expert_lightweight.pkl"), os.path.join("fallback_models", "voice_scaler_lightweight.pkl")),
-    "physio_expert": (os.path.join("fallback_models", "physio_expert_lightweight.pkl"),os.path.join("fallback_models", "physio_scaler_lightweight.pkl")),
+    "face_expert":   ("face_expert_lightweight.pkl",  "face_scaler_lightweight.pkl"),
+    "voice_expert":  ("voice_expert_lightweight.pkl", "voice_scaler_lightweight.pkl"),
+    "physio_expert": ("physio_expert.pkl",            "physio_scaler.pkl"),
 }
 
-_possible_expert_dirs = [
+_possible_model_dirs = [
     os.path.join(ROOT, "models"),
     os.path.join(ROOT, "webapp", "models"),
-    os.path.join(PROJECT_ROOT, "webapp", "models")
+    os.path.join(PROJECT_ROOT, "webapp", "models"),
 ]
-EXPERT_MODELS_DIR = next((d for d in _possible_expert_dirs if os.path.isdir(d)), _possible_expert_dirs[0])
+# Root models directory (registry.json, explainability bundle live here)
+EXPERT_MODELS_DIR = next((d for d in _possible_model_dirs if os.path.isdir(d)), _possible_model_dirs[0])
+# Directory holding the serialized expert models
+EXPERT_DIR = os.path.join(EXPERT_MODELS_DIR, "expert_models")
 
 _possible_contract_paths = [
     os.path.join(ROOT, "configs", "feature_contract.yaml"),
     os.path.join(ROOT, "webapp", "configs", "feature_contract.yaml"),
-    os.path.join(PROJECT_ROOT, "webapp", "configs", "feature_contract.yaml")
+    os.path.join(PROJECT_ROOT, "webapp", "configs", "feature_contract.yaml"),
 ]
 CONTRACT_PATH = next((p for p in _possible_contract_paths if os.path.isfile(p)), _possible_contract_paths[0])
 
 
-# ── Custom unpickler (handles sklearn internal renames) ────────────────────────
+# ── Custom unpickler (handles sklearn internal renames across versions) ───────
 class _CustomUnpickler(pickle.Unpickler):
+    """The expert models were pickled with scikit-learn 1.6 where the Cython loss
+    lived in a top-level ``_loss`` module; newer releases moved it under
+    ``sklearn._loss._loss``. Remap so they load on any recent scikit-learn."""
+
     def find_class(self, module, name):
-        if "sklearn._loss" in module:
-            for alt in ["sklearn._loss", "sklearn._loss._loss", "sklearn._loss.loss"]:
-                try:
-                    __import__(alt)
-                    m = sys.modules[alt]
-                    if hasattr(m, name):
-                        return getattr(m, name)
-                except Exception:
-                    continue
+        if module == "_loss" or module.startswith("sklearn._loss"):
+            try:
+                return super().find_class(module, name)
+            except (ImportError, ModuleNotFoundError, AttributeError):
+                for alt in ("sklearn._loss._loss", "sklearn._loss.loss", "sklearn._loss.link"):
+                    try:
+                        __import__(alt)
+                        m = sys.modules[alt]
+                        if hasattr(m, name):
+                            return getattr(m, name)
+                    except Exception:
+                        continue
         return super().find_class(module, name)
 
 
@@ -157,22 +93,18 @@ def _safe_load(path):
 
 class RuntimeEngine:
     """
-    Single authoritative inference engine for the Multimodal Stress Detector.
-
     Usage
     -----
-        engine = RuntimeEngine.from_registry()   # production
-        engine = RuntimeEngine.from_registry(registry_path="custom/registry.json")
-
-    Inference
-    ---------
-        result = engine.predict_fused(face=arr18, voice=arr12)
+        engine = RuntimeEngine.from_registry()
+        result = engine.predict_fused(face=arr18, voice=arr12, physio=arr51)
         result = engine.predict_face(arr18)
 
-    Replay (deterministic regression testing)
-    ---------
-        rows = [{"face": arr18, "voice": arr12, "physio": arr5}, ...]
-        outputs = engine.replay(rows)
+    Personal calibration
+    --------------------
+    If the user has completed the calibration flow (``backend.calibration``),
+    each modality is re-centred: ``x' = x - user_calm_baseline + population_calm_mean``
+    so the user's own resting state maps onto the population's resting state.
+    Without a completed calibration the raw features are used unchanged.
     """
 
     def __init__(
@@ -185,37 +117,16 @@ class RuntimeEngine:
         self.feature_lock = feature_lock
         self.expl_engine  = expl_engine
 
-        # Loaded artifacts — keyed by modality
         self._models  = {}   # "face" | "voice" | "physio" → sklearn estimator
         self._scalers = {}   # same keys → sklearn scaler or None
         self.load_errors: dict = {}
+        self.calm_reference: dict = {}   # modality → population calm-state mean (np.ndarray)
 
-        # Phase 8 Deep Learning variables
-        self.use_deep = False
-        self.deep_models = {}
-        self.ssvb_model = None
-        self.deep_sequence_history = {"face": [], "voice": [], "physio": []}
-
-        # Production champion (CNNBaseline, threshold=0.23)
-        self.champion_model = None
-        self.use_champion = False
-        self.champion_threshold = 0.23
-
-        # Phase 4 Methodology: Subject-Aware Normalization & Temporal Windowing
-        self.feature_history = {"face": [], "voice": [], "physio": []}
-        self.calibration_baselines = {"face": None, "voice": None, "physio": None}
-        self.calibrating = {"face": True, "voice": True, "physio": True}
-        self.calibration_frames = 30
-        self.window_size = 10
+        # Kept for API compatibility (modality status endpoint)
+        self.feature_history = {m: [] for m in MODALITIES}
+        self.calibrating = {m: True for m in MODALITIES}
 
         self._load_artifacts()
-
-    def reset_calibration(self):
-        """Reset the calibration baselines (e.g. for a new subject)."""
-        self.feature_history = {"face": [], "voice": [], "physio": []}
-        self.calibration_baselines = {"face": None, "voice": None, "physio": None}
-        self.calibrating = {"face": True, "voice": True, "physio": True}
-        self.deep_sequence_history = {"face": [], "voice": [], "physio": []}
 
     # ── Factory ───────────────────────────────────────────────────────────────
 
@@ -226,9 +137,7 @@ class RuntimeEngine:
         feature_lock: FeatureRuntimeLock = None,
         expl_engine=None,
     ) -> "RuntimeEngine":
-        """
-        Production factory. Loads everything from VersionRegistry.
-        """
+        """Production factory. Loads everything from VersionRegistry."""
         if registry_path is None:
             registry_path = os.path.join(EXPERT_MODELS_DIR, "registry.json")
 
@@ -245,74 +154,23 @@ class RuntimeEngine:
                 print(f"[RuntimeEngine] ExplainabilityEngine unavailable: {exc}")
                 expl_engine = None
 
-        engine = cls(registry=registry, feature_lock=feature_lock, expl_engine=expl_engine)
-        return engine
+        return cls(registry=registry, feature_lock=feature_lock, expl_engine=expl_engine)
 
     # ── Artifact loading ──────────────────────────────────────────────────────
 
     def _load_artifacts(self):
-        """Load model+scaler pairs for all registered experts (supporting both deep learning and classical)."""
-        config_path = os.path.join(EXPERT_MODELS_DIR, "research_champion", "deep_fusion_config.json")
-        self.strategy_used = "standard"
-        self.use_deep = False
-        
-        if os.path.exists(config_path) and TORCH_AVAILABLE:
-            import json
-            try:
-                with open(config_path, "r") as f:
-                    deep_cfg = json.load(f)
-                if deep_cfg.get("use_dynamic_router"):
-                    self.use_deep = True
-                    primary_strategy = deep_cfg.get("primary_strategy", "adversarial")
-                    
-                    if primary_strategy == "adversarial":
-                        # Check if all adversarial files are present
-                        adv_files = [
-                            os.path.join(EXPERT_MODELS_DIR, "research_champion", "adv_face_expert.pt"),
-                            os.path.join(EXPERT_MODELS_DIR, "research_champion", "adv_voice_expert.pt"),
-                            os.path.join(EXPERT_MODELS_DIR, "research_champion", "adv_physio_expert.pt"),
-                            os.path.join(EXPERT_MODELS_DIR, "research_champion", "adv_fusion_router.pt")
-                        ]
-                        if all(os.path.exists(f) for f in adv_files):
-                            self.strategy_used = "adversarial"
-                    
-                    self._load_deep_artifacts()
-            except Exception as exc:
-                print(f"[RuntimeEngine] Error reading deep_fusion_config.json: {exc}")
-
-        registry_to_modality = {
-            "face_expert":   "face",
-            "voice_expert":  "voice",
-            "physio_expert": "physio",
-        }
+        """Load model+scaler pairs for all registered experts."""
+        registry_to_modality = {"face_expert": "face", "voice_expert": "voice", "physio_expert": "physio"}
 
         for reg_key, modality in registry_to_modality.items():
             model_file, scaler_file = _MODEL_FILES[reg_key]
-            
-            # If use_deep is active, we will load the deep scalers instead for active modalities
-            if self.use_deep and modality in ["face", "voice", "physio"]:
-                prefix = "adv_" if self.strategy_used == "adversarial" else "deep_"
-                deep_scaler_file = f"{prefix}{modality}_scaler.pkl"
-                scaler_path = os.path.join(EXPERT_MODELS_DIR, "research_champion", deep_scaler_file)
-                if os.path.exists(scaler_path):
-                    try:
-                        self._scalers[modality] = _safe_load(scaler_path)
-                    except Exception as exc:
-                        print(f"[RuntimeEngine] Deep scaler load warning for {deep_scaler_file}: {exc}")
-                        self._scalers[modality] = None
-                continue
+            model_path  = os.path.join(EXPERT_DIR, model_file)
+            scaler_path = os.path.join(EXPERT_DIR, scaler_file)
 
-            model_path  = os.path.join(EXPERT_MODELS_DIR, model_file)
-            scaler_path = os.path.join(EXPERT_MODELS_DIR, scaler_file)
-
-            # Verify against registry hash if entry exists
             reg_entry = self.registry.get_active_model(reg_key)
-            if reg_entry:
-                stored_hash = reg_entry.get("hash")
-                if stored_hash:
-                    self._verify_hash(model_path, stored_hash, reg_key)
+            if reg_entry and reg_entry.get("hash"):
+                self._verify_hash(model_path, reg_entry["hash"], reg_key)
 
-            # Load model
             if os.path.exists(model_path):
                 try:
                     self._models[modality] = _safe_load(model_path)
@@ -322,7 +180,6 @@ class RuntimeEngine:
             else:
                 self.load_errors[reg_key] = f"File not found: {model_path}"
 
-            # Load scaler (optional — some models don't need one)
             if os.path.exists(scaler_path):
                 try:
                     self._scalers[modality] = _safe_load(scaler_path)
@@ -332,336 +189,81 @@ class RuntimeEngine:
             else:
                 self._scalers[modality] = None
 
-        # Load classical backups so that old unit tests pass
-        if self.use_deep:
-            for reg_key in ["face_expert", "voice_expert", "physio_expert"]:
-                modality = reg_key.split("_")[0]
-                model_file, _ = _MODEL_FILES[reg_key]
-                model_path = os.path.join(EXPERT_MODELS_DIR, model_file)
-                if os.path.exists(model_path) and modality not in self._models:
-                    try:
-                        self._models[modality] = _safe_load(model_path)
-                    except Exception:
-                        pass
+        # Population "calm" reference (used for personal-baseline re-centring)
+        ref_path = os.path.join(EXPERT_DIR, "calm_reference.json")
+        if os.path.exists(ref_path):
+            try:
+                with open(ref_path, "r") as f:
+                    ref = json.load(f)
+                self.calm_reference = {m: np.asarray(v, dtype=np.float64) for m, v in ref.items()}
+            except Exception as exc:
+                print(f"[RuntimeEngine] calm_reference.json warning: {exc}")
 
         loaded = list(self._models.keys())
         if loaded:
             print(f"[RuntimeEngine] Loaded modalities: {loaded}")
-            if self.use_deep:
-                print(f"[RuntimeEngine] Deep Learning {self.strategy_used.upper()} sequence models and Router active for fusion!")
         else:
             print("[RuntimeEngine] WARNING: No models loaded.")
 
-    def _load_deep_artifacts(self):
-        """Loads Phase 8 PyTorch sequence models and dynamic router."""
-        prefix = "adv_" if self.strategy_used == "adversarial" else "deep_"
-        try:
-            face_path = os.path.join(EXPERT_MODELS_DIR, "research_champion", f"{prefix}face_expert.pt")
-            self.deep_models["face"] = ModalityEncoder(18, 16)
-            self.deep_models["face"].load_state_dict(torch.load(face_path, map_location="cpu", weights_only=True))
-            self.deep_models["face"].eval()
-            reg_key_f = "adv_face_expert" if self.strategy_used == "adversarial" else "face_expert"
-            reg_f = self.registry.get_active_model(reg_key_f)
-            if reg_f:
-                self._verify_hash(face_path, reg_f.get("hash"), f"{prefix}face_expert")
-
-            voice_path = os.path.join(EXPERT_MODELS_DIR, "research_champion", f"{prefix}voice_expert.pt")
-            self.deep_models["voice"] = ModalityEncoder(12, 16)
-            self.deep_models["voice"].load_state_dict(torch.load(voice_path, map_location="cpu", weights_only=True))
-            self.deep_models["voice"].eval()
-            reg_key_v = "adv_voice_expert" if self.strategy_used == "adversarial" else "voice_expert"
-            reg_v = self.registry.get_active_model(reg_key_v)
-            if reg_v:
-                self._verify_hash(voice_path, reg_v.get("hash"), f"{prefix}voice_expert")
-
-            physio_path = os.path.join(EXPERT_MODELS_DIR, "research_champion", f"{prefix}physio_expert.pt")
-            self.deep_models["physio"] = ModalityEncoder(5, 16)
-            self.deep_models["physio"].load_state_dict(torch.load(physio_path, map_location="cpu", weights_only=True))
-            self.deep_models["physio"].eval()
-            reg_key_p = "adv_physio_expert" if self.strategy_used == "adversarial" else "physio_expert"
-            reg_p = self.registry.get_active_model(reg_key_p)
-            if reg_p:
-                self._verify_hash(physio_path, reg_p.get("hash"), f"{prefix}physio_expert")
-
-            router_path = os.path.join(EXPERT_MODELS_DIR, "research_champion", f"{prefix}fusion_router.pt")
-            self.deep_models["router"] = DynamicRouter(num_modalities=3)
-            self.deep_models["router"].load_state_dict(torch.load(router_path, map_location="cpu", weights_only=True))
-            self.deep_models["router"].eval()
-            reg_key_r = "adv_fusion_router" if self.strategy_used == "adversarial" else "deep_fusion_router"
-            reg_r = self.registry.get_active_model(reg_key_r)
-            if reg_r:
-                self._verify_hash(router_path, reg_r.get("hash"), f"{prefix}fusion_router")
-
-            # Load production ConvMoE-MF model weights
-            candidate_prod_paths = [
-                os.path.join(os.path.dirname(__file__), "models", "ssvb_casa_ais_production.pt"),
-                os.path.join(os.path.dirname(__file__), "models", "ssvb_casa_ais_production_conv_moe_mf.pt"),
-                os.path.join(ROOT, "models", "production_deep", "ssvb_casa_ais_production_conv_moe_mf.pt"),
-                os.path.join(ROOT, "backend", "runtime", "models", "ssvb_casa_ais_production.pt"),
-                os.path.join(ROOT, "webapp", "backend", "runtime", "models", "ssvb_casa_ais_production.pt")
-            ]
-            prod_model_path = next((p for p in candidate_prod_paths if os.path.exists(p)), candidate_prod_paths[0])
-            if os.path.exists(prod_model_path):
-                try:
-                    from backend.runtime.conv_moe_mf import ConvMoE_MF
-                    self.ssvb_model = ConvMoE_MF(hidden_dim=16, embed_dim=8, num_subjects=91, num_datasets=3)
-                    self.ssvb_model.load_state_dict(torch.load(prod_model_path, map_location="cpu"))
-                    self.ssvb_model.eval()
-                    print(f"[RuntimeEngine] Production ConvMoE-MF model loaded successfully from {prod_model_path}")
-                except Exception as exc:
-                    print(f"[RuntimeEngine] Error loading production model from {prod_model_path}: {exc}")
-                    self.ssvb_model = SSVBCASA_AIS(hidden_dim=16, num_subjects=65)
-                    self.ssvb_model.eval()
-            else:
-                self.ssvb_model = SSVBCASA_AIS(hidden_dim=16, num_subjects=65)
-                self.ssvb_model.eval()
-                print(f"[RuntimeEngine] SSVB-CASA-AIS cross-attention model initialised")
-
-            # Load Primary Production Model: CNNBaselineGRL (SSVB-CASA-AIS Pipeline, threshold=0.34)
-            candidate_champion_paths = [
-                os.path.join(os.path.dirname(__file__), "models", "ssvb_casa_ais_production_cnn_baseline_grl.pt"),
-                os.path.join(ROOT, "models", "production_deep", "ssvb_casa_ais_production_cnn_baseline_grl.pt"),
-                os.path.join(PROJECT_ROOT, "phase3_production", "results", "deploy", "ssvb_casa_ais_production_cnn_baseline_grl.pt")
-            ]
-            champion_path = next((p for p in candidate_champion_paths if os.path.exists(p)), candidate_champion_paths[0])
-
-            candidate_cfg_paths = [
-                os.path.join(os.path.dirname(__file__), "models", "ssvb_casa_ais_production_cnn_baseline_grl.json"),
-                os.path.join(ROOT, "models", "production_deep", "ssvb_casa_ais_production_cnn_baseline_grl.json"),
-                os.path.join(PROJECT_ROOT, "phase3_production", "results", "deploy", "ssvb_casa_ais_production_cnn_baseline_grl.json")
-            ]
-            champion_cfg = next((p for p in candidate_cfg_paths if os.path.exists(p)), candidate_cfg_paths[0])
-
-            if os.path.exists(champion_path):
-                try:
-                    self.champion_model = CNNBaselineGRL(total_feat_dim=69, num_classes=2, num_subjects=68)
-                    state = torch.load(champion_path, map_location="cpu")
-                    if "model_state_dict" in state:
-                        state = state["model_state_dict"]
-                    self.champion_model.load_state_dict(state)
-                    self.champion_model.eval()
-                    self.use_champion = True
-                    self.champion_threshold = 0.34
-                    if os.path.exists(champion_cfg):
-                        try:
-                            import json
-                            with open(champion_cfg, 'r') as f:
-                                cfg_data = json.load(f)
-                                self.champion_threshold = float(cfg_data.get("optimal_threshold", 0.34))
-                        except Exception:
-                            pass
-                    print(f"[RuntimeEngine] Primary Production Model CNNBaselineGRL loaded successfully (threshold={self.champion_threshold})")
-                except Exception as exc:
-                    self.champion_model = None
-                    self.use_champion = False
-                    print(f"[RuntimeEngine] Failed to load primary CNNBaselineGRL: {exc}")
-            else:
-                print(f"[RuntimeEngine] Primary model weights not found at {champion_path}")
-
-            # Load Secondary Model: Random Forest Classifier
-            candidate_rf_paths = [
-                os.path.join(ROOT, "models", "backend_selected", "model_weights.pkl"),
-                os.path.join(ROOT, "webapp", "models", "backend_selected", "model_weights.pkl"),
-                os.path.join(PROJECT_ROOT, "webapp", "models", "backend_selected", "model_weights.pkl")
-            ]
-            rf_path = next((p for p in candidate_rf_paths if os.path.exists(p)), candidate_rf_paths[0])
-            self.secondary_rf_model = None
-            self.use_secondary_rf = False
-            if os.path.exists(rf_path):
-                try:
-                    self.secondary_rf_model = _safe_load(rf_path)
-                    self.use_secondary_rf = True
-                    print(f"[RuntimeEngine] Secondary Random Forest model loaded successfully from {rf_path}")
-                except Exception as exc:
-                    print(f"[RuntimeEngine] Failed to load Secondary Random Forest model: {exc}")
-        except Exception as exc:
-            self.use_deep = False
-            self.ssvb_model = None
-            self.champion_model = None
-            print(f"[RuntimeEngine] Failed to load deep learning artifacts, falling back: {exc}")
-
-
     def _verify_hash(self, path: str, expected: str, label: str):
+        """Warn (never crash) if an artifact doesn't match its registry hash."""
         import hashlib
         if not os.path.exists(path):
-            print(f"[RuntimeEngine] WARNING: Cannot verify hash for {label} — file not found: {path}")
             return
-        sha256 = hashlib.sha256()
+        sha = hashlib.sha256()
         with open(path, "rb") as f:
-            for block in iter(lambda: f.read(4096), b""):
-                sha256.update(block)
-        actual = sha256.hexdigest()
+            for block in iter(lambda: f.read(65536), b""):
+                sha.update(block)
+        actual = sha.hexdigest()
         if actual != expected:
-            print(f"[RuntimeEngine] WARNING: Hash mismatch for {label}. Expected {expected[:16]}..., got {actual[:16]}...")
+            msg = f"Hash mismatch for {label}: expected {expected[:12]}..., got {actual[:12]}..."
+            self.load_errors[f"{label}_hash"] = msg
+            print(f"[RuntimeEngine] WARNING: {msg}")
         else:
             print(f"[RuntimeEngine] Hash verified for {label}: {actual[:16]}...")
-    def predict_champion(
-        self,
-        face=None,
-        voice=None,
-        physio=None,
-        user_id='default',
-    ) -> dict:
-        """
-        Inference via the production champion CNNBaseline (threshold=0.23).
 
-        Args:
-            face:   ndarray of shape (18,) or list of frames (each 18-dim)
-            voice:  ndarray of shape (12,) or list of frames (each 12-dim)
-            physio: ndarray of shape (5,) or list of frames (each 5-dim)
-            user_id: For calibration baseline lookup
-
-        NOTE: The champion was trained on enriched data (69 dims across 9
-        sub-modality groups). The runtime uses 35 dims (18 face + 12 voice +
-        5 physio). Missing dimensions are zero-padded. For full accuracy,
-        align the feature extraction pipeline with the enriched data format.
-        """
-        if not self.use_champion or self.champion_model is None:
-            return {"error": "Champion model not loaded", "status": "error"}
-
-        if face is None and voice is None and physio is None:
-            return {"error": "All inputs are None", "status": "error"}
-
-        try:
-            # Process each modality through calibration
-            feat_face = np.zeros(18, dtype=np.float32)
-            feat_voice = np.zeros(12, dtype=np.float32)
-            feat_physio = np.zeros(5, dtype=np.float32)
-
-            if face is not None:
-                arr = np.asarray(face, dtype=np.float32)
-                if arr.ndim > 1:
-                    arr = arr[-1]
-                if arr.size >= 18:
-                    feat_face = arr[:18]
-                else:
-                    feat_face[:arr.size] = arr
-            if voice is not None:
-                arr = np.asarray(voice, dtype=np.float32)
-                if arr.ndim > 1:
-                    arr = arr[-1]
-                if arr.size >= 12:
-                    feat_voice = arr[:12]
-                else:
-                    feat_voice[:arr.size] = arr
-            if physio is not None:
-                arr = np.asarray(physio, dtype=np.float32)
-                if arr.ndim > 1:
-                    arr = arr[-1]
-                if arr.size >= 5:
-                    feat_physio = arr[:5]
-                else:
-                    feat_physio[:arr.size] = arr
-
-            # Concatenate to 35-dim feature vector
-            feats_35 = np.concatenate([feat_face, feat_voice, feat_physio])
-
-            # Pad to champion's expected 69-dim input (35 → 69)
-            feats_69 = np.zeros(69, dtype=np.float32)
-            feats_69[:35] = feats_35
-
-            # Apply calibration subtraction
-            locked_face, norm_face = self._apply_calibration("face", face, user_id)
-            locked_voice, norm_voice = self._apply_calibration("voice", voice, user_id)
-            locked_physio, norm_physio = self._apply_calibration("physio", physio, user_id)
-
-            norm_69 = np.zeros(69, dtype=np.float32)
-            if norm_face is not None and len(norm_face) >= 18:
-                norm_69[:18] = norm_face[:18]
-            if norm_voice is not None and len(norm_voice) >= 12:
-                norm_69[18:30] = norm_voice[:12]
-            if norm_physio is not None and len(norm_physio) >= 5:
-                norm_69[30:35] = norm_physio[:5]
-
-            # Reshape for CNNBaseline: [B=1, T=1, feat_dim=69]
-            inp = torch.FloatTensor(norm_69).unsqueeze(0).unsqueeze(1)
-
-            with torch.no_grad():
-                logits = self.champion_model(inp)
-                prob = float(torch.softmax(logits, dim=1)[0][1].item())
-
-            threshold = self.champion_threshold
-            final_pred = 1 if prob > threshold else 0
-            stress_level = "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
-
-            active_modes = [m for m, v in [("face", face), ("voice", voice), ("physio", physio)] if v is not None]
-            raw_w = {m: FUSION_WEIGHTS.get(m, 0.33) for m in active_modes}
-            total_w = sum(raw_w.values()) if raw_w else 1.0
-            norm_weights = {m: round(w / total_w, 3) for m, w in raw_w.items()}
-
-            return {
-                "status":             "success",
-                "predicted_class":    "Stress" if final_pred else "No Stress",
-                "stress_probability": prob,
-                "no_stress_probability": 1.0 - prob,
-                "stress_level":       stress_level,
-                "percentage":         prob * 100.0,
-                "threshold_applied":  threshold,
-                "fusion_weights":     norm_weights,
-                "fusion_engine":      "primary_cnn_baseline_grl",
-                "active_modalities":  active_modes,
-            }
-        except Exception as exc:
-            return {"error": str(exc), "status": "error", "modality": "all"}
-
-    def predict_secondary_rf(
-        self,
-        face=None,
-        voice=None,
-        physio=None,
-        user_id='default',
-    ) -> dict:
-        """
-        Secondary Model Inference via Random Forest Classifier (backend_selected/model_weights.pkl).
-        Acts as fallback backup model when primary deep learning model is disabled.
-        """
-        if not self.use_secondary_rf or self.secondary_rf_model is None:
-            return {"error": "Secondary Random Forest model not loaded", "status": "error"}
-
-        try:
-            feat_vector = np.zeros((1, 360), dtype=np.float32)
-            if face is not None:
-                arr_f = np.asarray(face, dtype=np.float32).flatten()
-                feat_vector[0, :min(len(arr_f), 170)] = arr_f[:170]
-            if voice is not None:
-                arr_v = np.asarray(voice, dtype=np.float32).flatten()
-                feat_vector[0, 170:170+min(len(arr_v), 120)] = arr_v[:120]
-            if physio is not None:
-                arr_p = np.asarray(physio, dtype=np.float32).flatten()
-                feat_vector[0, 290:290+min(len(arr_p), 70)] = arr_p[:70]
-
-            prob = float(self.secondary_rf_model.predict_proba(feat_vector)[0][1])
-            threshold = 0.50
-            final_pred = 1 if prob > threshold else 0
-            stress_level = "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
-
-            active_modes = [m for m, v in [("face", face), ("voice", voice), ("physio", physio)] if v is not None]
-            raw_w = {m: FUSION_WEIGHTS.get(m, 0.33) for m in active_modes}
-            total_w = sum(raw_w.values()) if raw_w else 1.0
-            norm_weights = {m: round(w / total_w, 3) for m, w in raw_w.items()}
-
-            return {
-                "status":             "success",
-                "predicted_class":    "Stress" if final_pred else "No Stress",
-                "stress_probability": prob,
-                "no_stress_probability": 1.0 - prob,
-                "stress_level":       stress_level,
-                "percentage":         prob * 100.0,
-                "threshold_applied":  threshold,
-                "fusion_weights":     norm_weights,
-                "fusion_engine":      "secondary_random_forest",
-                "active_modalities":  active_modes,
-            }
-        except Exception as exc:
-            return {"error": str(exc), "status": "error", "modality": "all"}
+    def reset_calibration(self):
+        """Reset transient state (e.g. for a new subject)."""
+        self.feature_history = {m: [] for m in MODALITIES}
+        self.calibrating = {m: True for m in MODALITIES}
 
     # ── Public: status ────────────────────────────────────────────────────────
 
     @property
     def is_ready(self) -> bool:
-        return self.use_champion or self.use_secondary_rf or len(self._models) > 0
+        return len(self._models) > 0
 
-    # ── Public: fused inference ────────────────────────────────────────────────
+    def status(self) -> dict:
+        """Return a serialisable status dict for /api/runtime/status."""
+        model_versions = {}
+        for reg_key in ("face_expert", "voice_expert", "physio_expert"):
+            entry = self.registry.get_active_model(reg_key)
+            modality = reg_key.replace("_expert", "")
+            model_versions[reg_key] = {
+                "loaded":   modality in self._models,
+                "version":  entry.get("version") if entry else None,
+                "hash":     (entry.get("hash") or "")[:12] + "..." if entry else None,
+                "accuracy": (entry.get("metadata") or {}).get("accuracy"),
+            }
+
+        bundle_entry = self.registry.get_active_bundle("explainability_bundle")
+        return {
+            "engine":            "RuntimeEngine",
+            "model":             "Multimodal Expert Fusion (GradientBoosting face + voice, calibrated GB/RF physio)",
+            "ready":             self.is_ready,
+            "loaded_modalities": list(self._models.keys()),
+            "models":            model_versions,
+            "load_errors":       self.load_errors,
+            "decision_threshold": DECISION_THRESHOLD,
+            "explainability": {
+                "engine_loaded": self.expl_engine.is_loaded if self.expl_engine else False,
+                "bundle_version": bundle_entry.get("version") if bundle_entry else None,
+                "bundle_hash":   (bundle_entry.get("hash") or "")[:12] + "..." if bundle_entry else None,
+            },
+            "fusion_weights":    FUSION_WEIGHTS,
+        }
+
+    # ── Public: inference ─────────────────────────────────────────────────────
 
     def predict_fused(
         self,
@@ -672,69 +274,50 @@ class RuntimeEngine:
         user_id: str = 'default',
     ) -> dict:
         """
-        Primary & Secondary Fused Prediction Routing:
-        1. Evaluates Primary Model: CNNBaselineGRL (SSVB Production, threshold=0.34).
-        2. Fallback: Secondary Model: Random Forest Classifier.
+        Fuse the experts for whichever modalities are present.
+        Fused score = Σ w_m · p_m / Σ w_m  over present modalities.
         """
-        # 1. Primary Model: CNNBaselineGRL
-        if self.use_champion and self.champion_model is not None:
-            res = self.predict_champion(face=face, voice=voice, physio=physio, user_id=user_id)
-            if "error" not in res:
-                return res
+        if face is None and voice is None and physio is None:
+            return {"error": "All inputs are None", "status": "error"}
 
-        # 2. Secondary Model: Random Forest Classifier
-        if self.use_secondary_rf and self.secondary_rf_model is not None:
-            res_rf = self.predict_secondary_rf(face=face, voice=voice, physio=physio, user_id=user_id)
-            if "error" not in res_rf:
-                return res_rf
+        probs = {}
+        errors = {}
+        for name, feats in (("face", face), ("voice", voice), ("physio", physio)):
+            if feats is None:
+                continue
+            r = self._predict_single(name, feats, sensitivity, user_id)
+            if "error" in r:
+                errors[name] = r["error"]
+            else:
+                probs[name] = r["stress_probability"]
 
-        return {"error": "No valid predictions available from primary or secondary models", "status": "error"}
+        if not probs:
+            return {"error": "No valid predictions available: " + "; ".join(f"{k}: {v}" for k, v in errors.items()),
+                    "status": "error"}
 
-    def status(self) -> dict:
-        """Return a serialisable status dict for /api/runtime/status."""
-        model_versions = {}
-        for reg_key in ("face_expert", "voice_expert", "physio_expert"):
-            entry = self.registry.get_active_model(reg_key)
-            modality = reg_key.replace("_expert", "")
-            model_versions[reg_key] = {
-                "loaded":  modality in self._models,
-                "version": entry.get("version") if entry else None,
-                "hash":    (entry.get("hash") or "")[:12] + "..." if entry else None,
-                "accuracy": (entry.get("metadata") or {}).get("accuracy"),
-            }
+        raw_w = {m: FUSION_WEIGHTS[m] for m in probs}
+        total_w = sum(raw_w.values())
+        norm_weights = {m: round(w / total_w, 3) for m, w in raw_w.items()}
+        prob = float(sum(probs[m] * raw_w[m] for m in probs) / total_w)
+        threshold = self._threshold(sensitivity)
 
-        bundle_entry = self.registry.get_active_bundle("explainability_bundle")
-        return {
-            "engine":              "RuntimeEngine",
-            "phase":               7,
-            "ready":               self.is_ready,
-            "loaded_modalities":   list(self._models.keys()),
-            "models":              model_versions,
-            "load_errors":         self.load_errors,
-            "primary_model": {
-                "loaded": self.use_champion,
-                "architecture": "CNNBaselineGRL",
-                "weights": "ssvb_casa_ais_production_cnn_baseline_grl.pt",
-                "threshold": self.champion_threshold,
-                "dataset_cv": "15-fold LOSO",
-                "accuracy": 0.7162,
-                "roc_auc": 0.7509,
-            },
-            "secondary_model": {
-                "loaded": self.use_secondary_rf,
-                "architecture": "RandomForestClassifier",
-                "weights": "backend_selected/model_weights.pkl",
-                "n_estimators": 50,
-            },
-            "explainability": {
-                "engine_loaded": self.expl_engine.is_loaded if self.expl_engine else False,
-                "bundle_version": bundle_entry.get("version") if bundle_entry else None,
-                "bundle_hash":   (bundle_entry.get("hash") or "")[:12] + "..." if bundle_entry else None,
-            },
-            "fusion_weights":      FUSION_WEIGHTS,
+        result = {
+            "status":                "success",
+            "predicted_class":       "Stress" if prob > threshold else "No Stress",
+            "stress_probability":    prob,
+            "no_stress_probability": 1.0 - prob,
+            "confidence":            float(max(prob, 1.0 - prob)),
+            "stress_level":          self._level(prob),
+            "percentage":            prob * 100.0,
+            "threshold_applied":     threshold,
+            "fusion_weights":        norm_weights,
+            "individual_predictions": {m: float(p) for m, p in probs.items()},
+            "fusion_engine":         "expert_fusion",
+            "active_modalities":     list(probs.keys()),
         }
-
-    # ── Public: single-modality inference ─────────────────────────────────────
+        if errors:
+            result["modality_errors"] = errors
+        return result
 
     def predict_face(self, raw_features, sensitivity: float = 0.5, user_id: str = 'default') -> dict:
         return self._predict_single("face", raw_features, sensitivity, user_id)
@@ -745,45 +328,92 @@ class RuntimeEngine:
     def predict_physio(self, raw_features, sensitivity: float = 0.5, user_id: str = 'default') -> dict:
         return self._predict_single("physio", raw_features, sensitivity, user_id)
 
+    @staticmethod
+    def _level(prob: float) -> str:
+        return "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
+
+    @staticmethod
+    def _threshold(sensitivity: float) -> float:
+        """Higher sensitivity → lower threshold. Equals DECISION_THRESHOLD at 0.5."""
+        try:
+            s = float(sensitivity)
+        except (TypeError, ValueError):
+            s = 0.5
+        return float(np.clip(DECISION_THRESHOLD + (0.5 - s) * 0.4, 0.05, 0.95))
+
     def _predict_single(self, modality: str, raw_features, sensitivity: float, user_id: str = 'default') -> dict:
-        if modality not in self._models and not (self.use_deep and modality in ["face", "voice", "physio"]):
+        if modality not in self._models:
             return {"error": f"{modality} model not loaded", "modality": modality}
         if raw_features is None:
             return {"error": "raw_features is None", "modality": modality}
 
         try:
-            if self.use_deep and modality in ["face", "voice", "physio"]:
-                seq = self._lock_features_deep(modality, raw_features, user_id=user_id)
-                seq_t = torch.FloatTensor(seq)
-                with torch.no_grad():
-                    logits = self.deep_models[modality](seq_t)
-                    prob = float(torch.softmax(logits, dim=1)[0][1].item())
-            else:
-                locked = self._lock_features(modality, raw_features, user_id=user_id)
-                prob   = float(self._models[modality].predict_proba(locked)[0][1])
-
-            threshold   = 0.6 + (0.5 - sensitivity) * 0.4
-            stress_level = "High" if prob > 0.7 else "Moderate" if prob > 0.4 else "Low"
+            x = self._prepare(modality, raw_features, user_id)
+            prob = float(self._models[modality].predict_proba(x)[0][1])
+            threshold = self._threshold(sensitivity)
             return {
                 "status":             "success",
-                "modality":          modality,
+                "modality":           modality,
                 "stress_probability": prob,
-                "stress_level":       stress_level,
+                "stress_level":       self._level(prob),
                 "predicted_class":    "Stress" if prob > threshold else "No Stress",
                 "percentage":         float(prob * 100.0),
             }
         except Exception as exc:
             return {"error": str(exc), "modality": modality}
 
+    # ── Private: feature preparation ──────────────────────────────────────────
+
+    def _expected_dim(self, modality: str) -> int:
+        scaler = self._scalers.get(modality)
+        if scaler is not None and hasattr(scaler, "n_features_in_"):
+            return int(scaler.n_features_in_)
+        model = self._models.get(modality)
+        return int(getattr(model, "n_features_in_", 0))
+
+    def _personal_baseline(self, modality: str, user_id: str):
+        """Median of the user's calm calibration window (or None)."""
+        try:
+            from backend.calibration import get_or_create
+            cal = get_or_create(user_id)
+        except Exception:
+            return None
+        if not getattr(cal, "is_complete", False):
+            return None
+        matrix = getattr(cal, f"_{modality}_baseline_matrix", None)
+        if not matrix:
+            return None
+        return np.median(np.asarray(matrix, dtype=np.float64), axis=0)
+
+    def _prepare(self, modality: str, raw_features, user_id: str = 'default') -> np.ndarray:
+        """Validate dims, apply optional personal re-centring, then scale. Returns (1, d)."""
+        feats = np.asarray(raw_features, dtype=np.float64)
+        if feats.ndim > 1:
+            feats = feats[-1] if feats.shape[0] > 1 else feats.reshape(-1)
+        feats = np.nan_to_num(feats.reshape(-1), nan=0.0, posinf=0.0, neginf=0.0)
+
+        dim = self._expected_dim(modality)
+        if dim and feats.shape[0] != dim:
+            raise ValueError(f"{modality} expects {dim} features, got {feats.shape[0]}")
+
+        baseline  = self._personal_baseline(modality, user_id)
+        calm_mean = self.calm_reference.get(modality)
+        if baseline is not None and calm_mean is not None \
+                and baseline.shape == feats.shape == calm_mean.shape:
+            feats = feats - baseline + calm_mean
+
+        feats = feats.reshape(1, -1)
+        scaler = self._scalers.get(modality)
+        if scaler is not None:
+            feats = scaler.transform(feats)
+        return feats
 
     # ── Public: replay (deterministic regression testing) ─────────────────────
 
     def replay(self, feature_rows: list) -> list:
         """
         Deterministic replay of a list of feature dicts.
-
         Each row:  {"face": ndarray|None, "voice": ndarray|None, "physio": ndarray|None}
-        Returns:   list of predict_fused() result dicts
         """
         self.reset_calibration()
         return [
@@ -794,104 +424,3 @@ class RuntimeEngine:
             )
             for row in feature_rows
         ]
-
-    # ── Private: feature locking & calibration ────────────────────────────────
-
-    def _apply_calibration(self, modality: str, raw_features, user_id='default'):
-        """Lock features, flatten, apply Phase 4 subject-aware calibration baseline subtraction.
-        Returns (locked_feats_1d, norm_feats_1d)."""
-        if modality == "face":
-            feats = self.feature_lock.process_face_features(raw_features, scaler=None)
-        elif modality == "voice":
-            feats = self.feature_lock.process_voice_features(raw_features, scaler=None)
-        elif modality == "physio":
-            feats = self.feature_lock.process_physio_features(raw_features, scaler=None)
-        else:
-            raise ValueError(f"Unknown modality: {modality}")
-
-        feats = feats.flatten()
-
-        from backend.calibration import get_or_create
-        cal = get_or_create(user_id)
-        if cal.is_complete:
-            if modality == "face" and len(cal._face_baseline_matrix) > 0:
-                self.calibration_baselines[modality] = np.median(cal._face_baseline_matrix, axis=0)
-                self.calibrating[modality] = False
-            elif modality == "voice" and len(cal._voice_baseline_matrix) > 0:
-                self.calibration_baselines[modality] = np.median(cal._voice_baseline_matrix, axis=0)
-                self.calibrating[modality] = False
-            elif modality == "physio" and len(cal._physio_baseline_matrix) > 0:
-                self.calibration_baselines[modality] = np.median(cal._physio_baseline_matrix, axis=0)
-                self.calibrating[modality] = False
-
-        if self.calibrating[modality]:
-            self.feature_history[modality].append(feats)
-            if len(self.feature_history[modality]) >= self.calibration_frames:
-                self.calibration_baselines[modality] = np.median(self.feature_history[modality], axis=0)
-                self.calibrating[modality] = False
-                self.feature_history[modality] = []
-            baseline = self.calibration_baselines[modality] if not self.calibrating[modality] else np.median(self.feature_history[modality], axis=0)
-        else:
-            baseline = self.calibration_baselines[modality]
-
-        if baseline is None:
-            baseline = np.zeros_like(feats)
-
-        norm_feats = feats - baseline
-        return feats, norm_feats
-
-    def _lock_features(self, modality: str, raw_features, user_id='default') -> np.ndarray:
-        """
-        Pass raw features through FeatureRuntimeLock, apply Phase 4
-        methodology transformations (Calibration & Temporal Windowing),
-        and return the scaled array.
-        """
-        _, norm_feats = self._apply_calibration(modality, raw_features, user_id)
-
-        # Temporal Windowing (Rolling Average)
-        if not self.calibrating[modality]:
-            self.feature_history[modality].append(norm_feats)
-            if len(self.feature_history[modality]) > self.window_size:
-                self.feature_history[modality].pop(0)
-            windowed_feats = np.mean(self.feature_history[modality], axis=0)
-        else:
-            windowed_feats = norm_feats
-
-        windowed_feats = windowed_feats.reshape(1, -1)
-
-        # Scale with the trained scaler
-        scaler = self._scalers.get(modality)
-        if scaler is not None:
-            windowed_feats = scaler.transform(windowed_feats)
-
-        return windowed_feats
-
-    def _lock_features_deep(self, modality: str, raw_features, user_id='default') -> np.ndarray:
-        """
-        Pass raw features through FeatureRuntimeLock, apply subject-aware calibration baseline
-        subtraction, scale frame-wise, and maintain a sequence history of length 5.
-        """
-        _, norm_feats = self._apply_calibration(modality, raw_features, user_id)
-
-        # Scale frame-wise using deep scaler
-        scaler = self._scalers.get(modality)
-        if scaler is not None:
-            norm_feats_scaled = scaler.transform(norm_feats.reshape(1, -1))[0]
-        else:
-            norm_feats_scaled = norm_feats
-
-        # Append to sequence history of size 5
-        self.deep_sequence_history[modality].append(norm_feats_scaled)
-        if len(self.deep_sequence_history[modality]) > 5:
-            self.deep_sequence_history[modality].pop(0)
-
-        # Build sequence of length 5 (pad with oldest frame if less than 5 frames)
-        history_len = len(self.deep_sequence_history[modality])
-        if history_len < 5:
-            pad_size = 5 - history_len
-            seq = [self.deep_sequence_history[modality][0]] * pad_size + self.deep_sequence_history[modality]
-        else:
-            seq = self.deep_sequence_history[modality]
-
-        return np.array(seq).reshape(1, 5, -1)
-

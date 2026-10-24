@@ -534,55 +534,40 @@ def explainability_status():
 
 @app.route('/api/model/select', methods=['GET', 'POST'])
 def select_model():
-    """Get or switch active model between CNN + GRL ('cnn_grl') and Random Forest ('random_forest')."""
-    if request.method == 'POST':
-        data = request.json or {}
-        model_choice = data.get('model', '').lower()
-        if model_choice in ['cnn_grl', 'cnn+grl', 'deep', 'cnn']:
-            runtime_engine.use_deep = True
-        elif model_choice in ['random_forest', 'rf', 'classical']:
-            runtime_engine.use_deep = False
-        else:
-            return jsonify({
-                'status': 'error',
-                'message': f"Invalid model choice '{model_choice}'. Choose 'cnn_grl' or 'random_forest'."
-            }), 400
-
-    active_key = 'cnn_grl' if runtime_engine.use_deep else 'random_forest'
-    active_name = 'CNN + GRL (Primary Deep Champion)' if runtime_engine.use_deep else 'Random Forest (Production Classifier)'
+    """Return the active single authoritative model: Multimodal Expert Fusion."""
+    active_key = 'multimodal_expert'
+    active_name = 'Multimodal Expert Fusion (Production Model)'
     return jsonify({
         'status': 'success',
         'active_model_key': active_key,
         'active_model_name': active_name,
-        'use_deep': runtime_engine.use_deep,
+        'use_deep': False,
         'available_models': [
-            {'key': 'cnn_grl', 'name': 'CNN + GRL', 'type': 'Deep Learning', 'description': '1D-CNN baseline with Gradient Reversal Layer for subject identity suppression.'},
-            {'key': 'random_forest', 'name': 'Random Forest', 'type': 'Machine Learning', 'description': 'Fast classical ensemble classifier.'}
+            {
+                'key': 'multimodal_expert',
+                'name': 'Multimodal Expert Fusion',
+                'type': 'Ensemble Expert',
+                'description': 'Authoritative 3-expert fusion (Face GB + Voice GB + Physio Calibrated Ensemble) with personal baseline calibration.'
+            }
         ]
     })
 
 
 @app.route('/api/model/version', methods=['GET'])
 def model_version():
-    """Return current active model strategy and versions from the registry."""
+    """Return active model versions from the registry."""
     try:
         active_models = {
             'face_expert': runtime_engine.registry.get_active_model('face_expert'),
             'voice_expert': runtime_engine.registry.get_active_model('voice_expert'),
-            'physio_expert': runtime_engine.registry.get_active_model('physio_expert'),
-            'deep_face_expert': runtime_engine.registry.get_active_model('adv_face_expert' if runtime_engine.strategy_used == 'adversarial' else 'face_expert'),
-            'deep_voice_expert': runtime_engine.registry.get_active_model('adv_voice_expert' if runtime_engine.strategy_used == 'adversarial' else 'voice_expert'),
-            'deep_physio_expert': runtime_engine.registry.get_active_model('adv_physio_expert' if runtime_engine.strategy_used == 'adversarial' else 'physio_expert'),
-            'deep_fusion_router': runtime_engine.registry.get_active_model('adv_fusion_router' if runtime_engine.strategy_used == 'adversarial' else 'deep_fusion_router')
+            'physio_expert': runtime_engine.registry.get_active_model('physio_expert')
         }
-        active_key = 'cnn_grl' if runtime_engine.use_deep else 'random_forest'
-        active_name = 'CNN + GRL (Primary Deep Champion)' if runtime_engine.use_deep else 'Random Forest (Production Classifier)'
         return jsonify({
             'status': 'success',
-            'use_deep': runtime_engine.use_deep,
-            'active_model_key': active_key,
-            'active_model_name': active_name,
-            'strategy': runtime_engine.strategy_used,
+            'use_deep': False,
+            'active_model_key': 'multimodal_expert',
+            'active_model_name': 'Multimodal Expert Fusion (Production Model)',
+            'strategy': 'expert_fusion',
             'active_models': active_models
         })
     except Exception as e:
@@ -617,17 +602,16 @@ def predict_realtime():
         if abs(prob - 0.5) < 0.1:
             uncertainty_note = "Score is close to the decision boundary (0.5). High uncertainty."
         
-        fallback_active = not runtime_engine.use_deep
         resilience_status = {
             "face_available": face is not None,
             "voice_available": voice is not None,
             "physio_available": physio is not None,
-            "fallback_active": fallback_active,
-            "fallback_reason": "SSVB-CASA-AIS disabled or unavailable" if fallback_active else ""
+            "fallback_active": False,
+            "fallback_reason": ""
         }
         
-        active_model_name = "CNN + GRL (Primary Deep Champion)" if runtime_engine.use_deep else "Random Forest (Production Classifier)"
-        active_model_key = "cnn_grl" if runtime_engine.use_deep else "random_forest"
+        active_model_name = "Multimodal Expert Fusion (Production Model)"
+        active_model_key = "multimodal_expert"
         
         return jsonify({
             "status": "success",
@@ -755,8 +739,8 @@ def predict_upload():
                 physio_features=phys_features
             )
         
-        active_model_name = "CNN + GRL (Primary Deep Champion)" if runtime_engine.use_deep else "Random Forest (Production Classifier)"
-        active_model_key = "cnn_grl" if runtime_engine.use_deep else "random_forest"
+        active_model_name = "Multimodal Expert Fusion (Production Model)"
+        active_model_key = "multimodal_expert"
 
         return jsonify({
             "status": "success",
@@ -810,9 +794,9 @@ def modality_status():
     try:
         status = runtime_engine.status()
         buffer_status = {
-            "face": len(runtime_engine.deep_sequence_history.get("face", [])),
-            "voice": len(runtime_engine.deep_sequence_history.get("voice", [])),
-            "physio": len(runtime_engine.deep_sequence_history.get("physio", []))
+            "face": len(runtime_engine.feature_history.get("face", [])),
+            "voice": len(runtime_engine.feature_history.get("voice", [])),
+            "physio": len(runtime_engine.feature_history.get("physio", []))
         }
         return jsonify({
             "status": "success",
@@ -827,24 +811,12 @@ def modality_status():
 @app.route('/api/fallback/status', methods=['GET'])
 def fallback_status():
     """Return information about any active server fallbacks."""
-    try:
-        fallback_active = not runtime_engine.use_deep
-        reason = ""
-        if fallback_active:
-            if not TORCH_AVAILABLE:
-                reason = "PyTorch library is not installed/available"
-            elif not os.path.exists(os.path.join(EXPERT_MODELS_DIR, "research_champion", "deep_fusion_config.json")):
-                reason = "deep_fusion_config.json config file missing"
-            else:
-                reason = "Dynamic deep router disabled in config"
-        return jsonify({
-            "status": "success",
-            "fallback_active": fallback_active,
-            "active_model": "Random Forest / Classical Experts" if fallback_active else f"SSVB-CASA-AIS ({runtime_engine.strategy_used} MoE)",
-            "reason": reason
-        })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    return jsonify({
+        "status": "success",
+        "fallback_active": False,
+        "active_model": "Multimodal Expert Fusion (Production Model)",
+        "reason": ""
+    })
 
 
 @app.route('/api/multimodal/analyze', methods=['POST'])

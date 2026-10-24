@@ -22,6 +22,12 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+if command -v fuser &> /dev/null; then
+    fuser -k 5000/tcp 2>/dev/null || true
+elif command -v lsof &> /dev/null; then
+    lsof -ti tcp:5000 | xargs -r kill 2>/dev/null || true
+fi
+
 echo "[2/2] Starting server on http://localhost:5000..."
 echo "Web UI & API available at: http://localhost:5000"
 echo ""
