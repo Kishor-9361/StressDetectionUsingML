@@ -13,4 +13,4 @@ from backend.app import app, socketio
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting Multimodal Stress Detection server on 0.0.0.0:{port}...")
-    socketio.run(app, debug=False, host='0.0.0.0', port=port, use_reloader=False, minimum_chunk_size=1)
+    socketio.run(app, debug=False, host='0.0.0.0', port=port, use_reloader=False)
