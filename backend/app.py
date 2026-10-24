@@ -22,7 +22,7 @@ def print(*args, **kwargs):
     kwargs.setdefault('flush', True)
     builtins.print(*args, **kwargs)
 
-import eventlet
+import time
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -54,7 +54,7 @@ FRONTEND_URLS = [
     'http://127.0.0.1:3000'
 ]
 CORS(app, resources={r"/api/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25, max_http_buffer_size=100000000)
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25, max_http_buffer_size=100000000, async_mode="threading")
 
 # Initialize global stream processor (will be injected after runtime_engine is ready)
 stream_processor = None
@@ -507,7 +507,7 @@ def health_check():
         },
         'explainability_engine': {'loaded': engine_status.get('explainability', {}).get('engine_loaded', False)},
         'load_errors': MODEL_LOAD_ERRORS,
-        'server': 'eventlet'
+        'server': 'gthread'
     })
 
 
@@ -1087,21 +1087,27 @@ def analyze_voice():
             }), 400
         
         # Save file temporarily
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        upload_dir = app.config.get('UPLOAD_FOLDER', 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        filename = secure_filename(file.filename) or "voice_recording.wav"
+        filepath = os.path.join(upload_dir, filename)
         file.save(filepath)
         
         # Extract features and predict
-        voice_features = model.extract_voice_features(filepath)
-        
-        # Clean up
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        voice_features = None
+        try:
+            voice_features = model.extract_voice_features(filepath)
+        finally:
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
 
         if voice_features is None:
             return jsonify({
                 'status': 'error',
-                'message': 'Failed to extract voice features. Ensure the audio is not silent and is in a valid format.'
+                'message': 'Failed to extract voice features. Ensure the audio contains clear speech and is in a valid format.'
             }), 400
             
         result = runtime_engine.predict_voice(raw_features=voice_features)
@@ -1117,6 +1123,8 @@ def analyze_voice():
         return jsonify(result)
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
             'message': str(e)
@@ -1829,8 +1837,10 @@ def stream_fused():
     """
     SSE stream emitting fused predictions every 2 seconds.
     """
-    request.environ['eventlet.minimum_write_chunk_size'] = 1
-    request.environ['eventlet.minimum_chunk_size'] = 1
+    if 'eventlet.minimum_write_chunk_size' in request.environ:
+        request.environ['eventlet.minimum_write_chunk_size'] = 1
+    if 'eventlet.minimum_chunk_size' in request.environ:
+        request.environ['eventlet.minimum_chunk_size'] = 1
     print("[Fusion Engine] Client connected to fused SSE stream.")
 
     def generate():
@@ -1878,7 +1888,7 @@ def stream_fused():
                 print(f"[Fusion Engine] Fused Level: {fused['stress_level']} ({fused['fused_score']:.3f}) | Active: {list(probs.keys())}")
 
             yield f"data: {data}\n\n"
-            eventlet.sleep(1)
+            time.sleep(1)
 
     return app.response_class(
         generate(),

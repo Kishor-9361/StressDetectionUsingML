@@ -333,11 +333,17 @@ export default function Dashboard() {
         method: "POST",
         body: formData,
       });
-      const data = await response.json();
-      if (data.status === "success") {
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (jsonErr) {
+        throw new Error(`Server returned status ${response.status}: ${text.slice(0, 100) || response.statusText || "Empty response"}`);
+      }
+      if (response.ok && data.status === "success") {
         setLiveVoiceResult(data);
       } else {
-        setError(data.message || "Live voice analysis failed.");
+        setError(data.message || `Live voice analysis failed (Status ${response.status}).`);
       }
     } catch (err) {
       setError(`Live voice analysis failed: ${err.message}`);
