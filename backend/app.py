@@ -88,9 +88,22 @@ import pickle
 import time
 import json
 import urllib.request
-import urllib.error
+import io
 from backend.voice_worker import extract_voice_stress_indicators
 from backend.score_buffer import score_buffer
+
+# Pre-warm voice feature extraction at container start to compile Numba/librosa JIT
+try:
+    _dummy_sr = 16000
+    _dummy_t = np.linspace(0, 0.5, int(_dummy_sr * 0.5), endpoint=False)
+    _dummy_sine = (np.sin(2 * np.pi * 440 * _dummy_t) * 16384).astype(np.int16)
+    _dummy_buf = io.BytesIO()
+    from scipy.io import wavfile as _wv
+    _wv.write(_dummy_buf, _dummy_sr, _dummy_sine)
+    extract_voice_stress_indicators(_dummy_buf.getvalue())
+    print("[Voice Worker] Audio biomarker pipeline pre-warmed and compiled successfully.")
+except Exception as _e_warm:
+    print(f"[Voice Worker] Warm-up notice: {_e_warm}")
 
 try:
     import shap

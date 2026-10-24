@@ -88,55 +88,40 @@ def extract_voice_stress_indicators(audio_bytes, sr_target=16000, f0_min=75, f0_
         if len(y) > max_samples:
             y = y[:max_samples]
             
-        print("Successfully loaded WAV audio using scipy.io.wavfile first")
+        print("Successfully loaded WAV audio using scipy.io.wavfile first", flush=True)
     except Exception as e_scipy:
-        print(f"scipy.io.wavfile first try failed: {e_scipy}. Trying subprocess librosa fallback...")
-        temp_in_path = None
-        temp_out_path = None
         try:
-            # Write bytes to a temporary input file
-            fd_in, temp_in_path = tempfile.mkstemp()
-            os.close(fd_in)
-            with open(temp_in_path, 'wb') as f:
-                f.write(audio_bytes)
-                
-            # Prepare temporary output WAV path
-            fd_out, temp_out_path = tempfile.mkstemp(suffix='.wav')
-            os.close(fd_out)
-            
-            # Run conversion in separate clean process to prevent eventlet soundfile deadlocks
-            cmd = [
-                sys.executable,
-                "-c",
-                f"import librosa, soundfile; y, sr = librosa.load(r'{temp_in_path}', sr={sr_target}, mono=True, duration=3.0); soundfile.write(r'{temp_out_path}', y, sr, format='WAV', subtype='PCM_16')"
-            ]
-            
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-            
-            # Read converted WAV using scipy (safe, deadlock-free)
-            from scipy.io import wavfile
-            sr, y_orig = wavfile.read(temp_out_path)
-            if y_orig.dtype == np.int16:
-                y = y_orig.astype(np.float32) / 32768.0
-            elif y_orig.dtype == np.int32:
-                y = y_orig.astype(np.float32) / 2147483648.0
-            elif y_orig.dtype == np.uint8:
-                y = (y_orig.astype(np.float32) - 128.0) / 128.0
+            # Direct in-process load with soundfile or librosa (fast, memory-based)
+            import soundfile as sf
+            audio_buf = io.BytesIO(audio_bytes)
+            y_orig, sr_orig = sf.read(audio_buf, dtype='float32')
+            if len(y_orig.shape) > 1:
+                y_orig = np.mean(y_orig, axis=1)
+            if sr_orig != sr_target:
+                from scipy import signal
+                num_samples = int(len(y_orig) * sr_target / sr_orig)
+                y = signal.resample(y_orig, num_samples)
             else:
-                y = y_orig.astype(np.float32)
-                
-            print("Successfully loaded audio using subprocess librosa fallback")
-        except Exception as e_sub:
-            print(f"Subprocess conversion fallback failed: {e_sub}")
-            y = None
-        finally:
-            # Clean up temporary files if created
-            if temp_in_path and os.path.exists(temp_in_path):
-                try: os.remove(temp_in_path)
-                except: pass
-            if temp_out_path and os.path.exists(temp_out_path):
-                try: os.remove(temp_out_path)
-                except: pass
+                y = y_orig
+            sr = sr_target
+            max_samples = int(sr * 3.0)
+            if len(y) > max_samples:
+                y = y[:max_samples]
+            print("Successfully loaded audio using in-process soundfile fallback", flush=True)
+        except Exception as e_sf:
+            print(f"soundfile fallback failed: {e_sf}. Trying librosa.load...", flush=True)
+            try:
+                temp_in_path = None
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f_tmp:
+                    f_tmp.write(audio_bytes)
+                    temp_in_path = f_tmp.name
+                y, sr = librosa.load(temp_in_path, sr=sr_target, mono=True, duration=3.0)
+                if temp_in_path and os.path.exists(temp_in_path):
+                    os.remove(temp_in_path)
+                print("Successfully loaded audio using librosa.load", flush=True)
+            except Exception as e_lib:
+                print(f"librosa.load failed: {e_lib}", flush=True)
+                y = None
     if y is None:
         print("voice_worker returning None: y is None")
         return None
